@@ -32,7 +32,7 @@ def main():
     ap.add_argument("--resolver-base", default=RESOLVER_BASE)
     ap.add_argument("--cc-host", default=CC_HOST)
     ap.add_argument("--cc-port", type=int, default=CC_PORT)
-    ap.add_argument("--only-live", action="store_true")
+    ap.add_argument("--only-live", action="store_true", default=False)
     args = ap.parse_args()
 
     conn = open_db(args.db)
