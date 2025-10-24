@@ -16,6 +16,12 @@ def iso_to_xmltv(ts: str) -> str:
     dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc)
     return dt.strftime("%Y%m%d%H%M%S +0000")
 
+def _row_get(r, k):
+    try:
+        return r[k]
+    except Exception:
+        return None
+
 def conn_open(path):
     c = sqlite3.connect(path)
     c.row_factory = sqlite3.Row
@@ -79,7 +85,8 @@ def load_slots(conn, pid):
       e.subtitle   AS event_subtitle,
       e.summary    AS event_summary,
       e.sport      AS event_sport,
-      e.image      AS event_image
+      e.image      AS event_image,
+      e.start_utc  AS event_start
     FROM plan_slot s
     LEFT JOIN events e ON e.id = s.event_id
     WHERE s.plan_id = ?
@@ -104,7 +111,12 @@ def build_xml(ch_rows, slots, resolver_base, meta):
     programmes = 0
     for r in slots:
         chan  = r["chan"]
-        start = iso_to_xmltv(r["slot_start"])
+        start_str = r["slot_start"]
+        # Backdate to true event start (if earlier) so EPG shows full progress
+        if _row_get(r,"slot_kind") == "event" and _row_get(r,"event_start"):
+            if r["event_start"] < start_str:
+                start_str = r["event_start"]
+        start = iso_to_xmltv(start_str)
         stop  = iso_to_xmltv(r["slot_stop"])
 
         p = ET.SubElement(tv, "programme", channel=chan, start=start, stop=stop)
