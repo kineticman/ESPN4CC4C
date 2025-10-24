@@ -16,3 +16,7 @@ data/*.sqlite3-wal
 *.swp
 .DS_Store
 data/*.sqlite3
+backups/
+releases/
+*.zip
+*.tar.gz
