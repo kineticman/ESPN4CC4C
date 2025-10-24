@@ -46,3 +46,4 @@
 - M3U/XMLTV `<url>` entries call resolver without `only_live`.
 - Systemd: single pipeline timer (`vc-pipeline-v2.timer`) drives ingest→plan→publish; removed old `vc-plan` timer usage and bad flags.
 - Repo hygiene: ignore `out/`, `logs/`, `releases/`, `backups/`; moved artifacts to `releases//`; DB backups to `backups/`.
+2025-10-24  xmltv: enrich <desc> with summary/sport/title

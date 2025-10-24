@@ -141,8 +141,17 @@ def build_xml(ch_rows, slots, resolver_base, meta):
         # Optional metadata
         if r["event_subtitle"]:
             ET.SubElement(p, "sub-title").text = r["event_subtitle"]
+        # Build a richer <desc>: summary (e.g., code like CWHOC) + sport + title
+        desc_parts = []
         if r["event_summary"]:
-            ET.SubElement(p, "desc").text = r["event_summary"]
+            desc_parts.append(str(r["event_summary"]).strip())
+        sport_txt = (r["event_sport"] or "").strip()
+        if sport_txt:
+            desc_parts.append(sport_txt)
+        if title_txt:
+            desc_parts.append(title_txt)
+        if desc_parts:
+            ET.SubElement(p, "desc").text = " — ".join([x for x in desc_parts if x])
 
         # Categories ONLY for real sports events
         sport = (r["event_sport"] or "").strip()
