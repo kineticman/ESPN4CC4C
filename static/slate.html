@@ -1,0 +1,21 @@
+<!doctype html><html><head>
+<meta charset="utf-8"><title>Stand By</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{height:100%;margin:0}
+  body{background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font:16px system-ui}
+  h1{font-size:8vmin;margin:.2em 0}.muted{opacity:.8;font-size:3vmin}
+  .dot{animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+</style>
+</head><body><div style="text-align:center">
+  <h1 class="dot">Stand By</h1>
+  <div class="muted">No live event scheduled</div>
+  <div id="clock" class="muted"></div>
+</div>
+<script>
+  const f=new Intl.DateTimeFormat([], {dateStyle:'medium', timeStyle:'medium'});
+  setInterval(()=>clock.textContent=f.format(new Date()),1000);
+  clock.textContent=f.format(new Date());
+</script>
+</body></html>
