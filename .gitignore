@@ -1,10 +1,17 @@
+# venv & Python junk
 .venv/
 __pycache__/
 *.pyc
+
+# runtime/output dirs
 logs/
 out/
+
+# sqlite side files (keep the main .sqlite3)
 data/*.sqlite3-shm
 data/*.sqlite3-wal
+
+# misc
 *.tmp
 *.swp
 .DS_Store
