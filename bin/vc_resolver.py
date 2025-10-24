@@ -1,23 +1,36 @@
 #!/usr/bin/env python3
 from fastapi import FastAPI, Response, Request
-from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
 
 try:
     from config import (
-        RESOLVER_DB_DEFAULT as CFG_DB_DEFAULT,
         RESOLVER_SLATE_URL as CFG_SLATE_URL,
     )
 except Exception:
-    CFG_DB_DEFAULT = CFG_DB_DEFAULT
     CFG_SLATE_URL = ""
 app = FastAPI()
 
+import os
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+OUT_DIR = os.path.join(BASE_DIR, "out")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+# Serve /out/* (XML, M3U) and /static/* (slate page, etc.)
+try:
+    app.mount("/out", StaticFiles(directory=OUT_DIR), name="out")
+    app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+except Exception:
+    # In case directories are missing in a fresh checkout; mounts are optional
+    pass
+
+
 DB_DEFAULT = "data/eplus_vc.sqlite3"
+db_path = os.environ.get("VC_DB", DB_DEFAULT)  # global for debug/logs
 
 def db() -> sqlite3.Connection:
-    db_path = os.getenv("VC_DB", CFG_DB_DEFAULT)
     uri = f"file:{db_path}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, check_same_thread=False, timeout=2.0)
     conn.row_factory = sqlite3.Row
@@ -148,3 +161,29 @@ def debug_lane(lane: str, at: Optional[str] = None):
     except Exception as outer:
         info["error"] = str(outer)
         return JSONResponse(info, status_code=500)
+
+
+@app.get("/slate")
+def slate_page():
+    """Serve the standby page from static/slate.html."""
+    path = os.path.join(STATIC_DIR, "slate.html")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="text/html")
+    return HTMLResponse("<h1>Stand By</h1><p>No live event scheduled.</p>")
+
+@app.get("/epg.xml")
+def epg_xml():
+    """Latest XMLTV from out/virtual_channels.xml"""
+    path = os.path.join(OUT_DIR, "virtual_channels.xml")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="application/xml")
+    return Response("XMLTV not found", status_code=404, media_type="text/plain")
+
+@app.get("/playlist.m3u")
+def playlist_m3u():
+    """Latest M3U from out/virtual_channels.m3u"""
+    path = os.path.join(OUT_DIR, "virtual_channels.m3u")
+    if os.path.exists(path):
+        # Correct-ish MIME for M3U
+        return FileResponse(path, media_type="audio/x-mpegurl", filename="virtual_channels.m3u")
+    return Response("# not found\n", status_code=404, media_type="text/plain")
