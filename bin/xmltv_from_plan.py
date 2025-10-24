@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-import argparse, sqlite3, sys, json
+import argparse, sqlite3, sys, json, os
 from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 
+# Placeholder wording (can be overridden by env vars)
+PH_TITLE    = os.getenv('VC_PLACEHOLDER_TITLE', 'Stand By')
+PH_SUBTITLE = os.getenv('VC_PLACEHOLDER_SUBTITLE', '')
+PH_SUMMARY  = os.getenv('VC_PLACEHOLDER_SUMMARY', 'No live event scheduled')
+
 LAN_ORIGIN = "http://192.168.86.72:8094"
+
 
 def iso_to_xmltv(ts: str) -> str:
     dt = datetime.fromisoformat(ts.replace("Z","+00:00")).astimezone(timezone.utc)
@@ -90,13 +96,13 @@ def build_xml(ch_rows, slots, resolver_base, meta):
         start = iso_to_xmltv(r["slot_start"])
         stop  = iso_to_xmltv(r["slot_stop"])
         p = ET.SubElement(tv, "programme", channel=chan, start=start, stop=stop)
-        ET.SubElement(p, "title").text = (r["event_title"] or "ESPN+ Programming")
+        ET.SubElement(p, "title").text = (   (r["event_title"].strip() if ("event_title" in r.keys() and r["event_title"]) else "")    or PH_TITLE)
         if r["event_subtitle"]: ET.SubElement(p, "sub-title").text = r["event_subtitle"]
         if r["event_summary"]:  ET.SubElement(p, "desc").text = r["event_summary"]
         if r["event_sport"]:    ET.SubElement(p, "category").text = r["event_sport"]
         ET.SubElement(p, "category").text = "Sports"
         if r["event_image"]:    ET.SubElement(p, "icon", src=r["event_image"])
-        ET.SubElement(p, "url").text = f"{resolver_base}/vc/{chan}?only_live=1"
+        ET.SubElement(p, "url").text = f"{resolver_base}/vc/{chan}"
         programmes += 1
     # pretty
     def indent(e, level=0):
