@@ -1,68 +1,53 @@
 #!/usr/bin/env python3
-# file: bin/m3u_from_plan.py
-# ESPN Clean v2.0 — render M3U from active plan (resolver-driven lanes)
-
-import argparse, os, json, sqlite3, urllib.parse
+import argparse, sqlite3
+from urllib.parse import quote
 from datetime import datetime, timezone
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(LOG_DIR, "m3u_from_plan.jsonl")
+SERVER_IP     = "192.168.86.72"
+RESOLVER_BASE = f"http://{SERVER_IP}:8094"
+CC_HOST       = SERVER_IP
+CC_PORT       = 5589
 
-def jlog(**kv):
-    kv = {"ts": datetime.now(timezone.utc).isoformat(), "mod":"m3u_from_plan", **kv}
-    line = json.dumps(kv, ensure_ascii=False)
-    print(line, flush=True)
-    try:
-        with open(LOG_PATH,"a",encoding="utf-8") as f: f.write(line+"\n")
-    except Exception: pass
+def open_db(p):
+    c = sqlite3.connect(p); c.row_factory = sqlite3.Row; return c
 
-def connect_db(path):
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    return conn
-
-def get_active_plan(conn):
-    r = conn.execute("SELECT value FROM plan_meta WHERE key='active_plan_id'").fetchone()
-    return int(r["value"]) if r else None
+def latest_plan_id(conn):
+    r = conn.execute("SELECT MAX(plan_id) AS pid FROM plan_slot").fetchone()
+    return int(r["pid"]) if r and r["pid"] is not None else None
 
 def load_channels(conn):
-    return [dict(r) for r in conn.execute("SELECT id,chno,name,group_name FROM channel WHERE active=1 ORDER BY chno")]
+    return conn.execute("SELECT id, chno, name FROM channel WHERE active=1 ORDER BY chno ASC").fetchall()
+
+def m3u_entry(ch_id, chno, name, resolver_base, cc_host, cc_port, only_live):
+    tail = f"/vc/{ch_id}" + ("?only_live=1" if only_live else "")
+    inner = f"{resolver_base}{tail}"
+    cc_url = f"chrome://{cc_host}:{cc_port}/stream?url=" + quote(inner, safe="")
+    group = "ESPN+ VC"
+    return f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{name}" tvg-chno="{chno}" group-title="{group}",{name}\n{cc_url}'
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--resolver-base", required=True, help="http://LAN:8093")
-    ap.add_argument("--cc-host", required=True)
-    ap.add_argument("--cc-port", required=True)
+    ap.add_argument("--resolver-base", default=RESOLVER_BASE)
+    ap.add_argument("--cc-host", default=CC_HOST)
+    ap.add_argument("--cc-port", type=int, default=CC_PORT)
     ap.add_argument("--only-live", action="store_true")
     args = ap.parse_args()
 
-    conn = connect_db(args.db)
-    pid = get_active_plan(conn)
-    chans = load_channels(conn)
+    conn = open_db(args.db)
+    pid = latest_plan_id(conn)
+    chans = load_channels(conn) if pid is not None else []
+    body = ["#EXTM3U"]
+    for ch in chans:
+        body.append(m3u_entry(ch["id"], ch["chno"], ch["name"], args.resolver_base, args.cc_host, args.cc_port, args.only_live))
+    if not chans:
+        # emit standard 40 as fallback
+        for i in range(1,41):
+            cid = f"eplus{i}"; name = f"ESPN+ EPlus {i}"; chno = 20010+(i-1)
+            body.append(m3u_entry(cid, chno, name, args.resolver_base, args.cc_host, args.cc_port, args.only_live))
+    with open(args.out,"w",encoding="utf-8") as f: f.write("\n".join(body) + "\n")
+    print(f'{{"ts":"{datetime.now(timezone.utc).isoformat()}","mod":"m3u_from_plan","event":"m3u_written","plan_id":{pid if pid is not None else "null"},"out":"{args.out}","channels":{len(chans) if chans else 40}}}')
 
-    tmp = args.out + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write("#EXTM3U\n")
-        for c in chans:
-            inner = f'{args.resolver_base.rstrip("/")}/vc/{c["id"]}'
-            if args.only_live:
-                inner += "?only_live=1"
-            url = f"chrome://{args.cc_host}:{args.cc_port}/stream?url=" + urllib.parse.quote(inner, safe="")
-            tvg_id = c["id"]
-            tvg_name = c["name"]
-            group = c["group_name"]
-            f.write(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{tvg_name}" tvg-chno="{c["chno"]}" group-title="{group}",{tvg_name}\n')
-            f.write(url + "\n")
-    os.replace(tmp, args.out)
-    jlog(event="m3u_written", plan_id=pid, out=args.out, channels=len(chans), only_live=args.only_live)
-
-if __name__=="__main__":
-    try: main()
-    except Exception as e:
-        jlog(level="error", event="m3u_failed", error=str(e))
-        raise
+if __name__ == "__main__":
+    main()

@@ -1,120 +1,141 @@
 #!/usr/bin/env python3
-# file: bin/xmltv_from_plan.py
-# ESPN Clean v2.0 — render XMLTV from active plan
-
-import argparse, os, json, sqlite3, html
+import argparse, sqlite3, sys, json
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+import xml.etree.ElementTree as ET
 
-VERSION="2.0.0"
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(LOG_DIR, "xmltv_from_plan.jsonl")
+LAN_ORIGIN = "http://192.168.86.72:8094"
 
-def jlog(**kv):
-    kv = {"ts": datetime.now(timezone.utc).isoformat(), "mod":"xmltv_from_plan", **kv}
-    line = json.dumps(kv, ensure_ascii=False)
-    print(line, flush=True)
+def iso_to_xmltv(ts: str) -> str:
+    dt = datetime.fromisoformat(ts.replace("Z","+00:00")).astimezone(timezone.utc)
+    return dt.strftime("%Y%m%d%H%M%S +0000")
+
+def conn_open(path):
+    c = sqlite3.connect(path); c.row_factory = sqlite3.Row; return c
+
+def have_table(conn, name: str) -> bool:
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())
+
+def cols(conn, name: str) -> set:
     try:
-        with open(LOG_PATH,"a",encoding="utf-8") as f: f.write(line+"\n")
-    except Exception: pass
+        return {r["name"] for r in conn.execute(f"PRAGMA table_info({name})").fetchall()}
+    except sqlite3.OperationalError:
+        return set()
 
-def connect_db(path):
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    return conn
+def latest_plan_id(conn):
+    r = conn.execute("SELECT MAX(plan_id) AS pid FROM plan_slot").fetchone()
+    return int(r["pid"]) if r and r["pid"] is not None else None
 
-def get_active_plan(conn):
-    r = conn.execute("SELECT value FROM plan_meta WHERE key='active_plan_id'").fetchone()
-    return int(r["value"]) if r else None
+def compute_window(conn, pid: int) -> tuple[str|None, str|None]:
+    r = conn.execute(
+        "SELECT MIN(start_utc) AS vfrom, MAX(end_utc) AS vto FROM plan_slot WHERE plan_id=?",
+        (pid,)
+    ).fetchone()
+    return (r["vfrom"], r["vto"]) if r else (None, None)
+
+def read_checksum(conn, pid: int) -> str|None:
+    # Prefer plan_run.checksum if present
+    if have_table(conn, "plan_run"):
+        c = cols(conn, "plan_run")
+        if "checksum" in c:
+            r = conn.execute("SELECT checksum FROM plan_run WHERE id=?", (pid,)).fetchone()
+            if r: return r["checksum"]
+    # Fallback to plan_meta.checksum(plan_id) if present
+    if have_table(conn, "plan_meta"):
+        c = cols(conn, "plan_meta")
+        key = "plan_id" if "plan_id" in c else ("id" if "id" in c else None)
+        if key and "checksum" in c:
+            r = conn.execute(f"SELECT checksum FROM plan_meta WHERE {key}=?", (pid,)).fetchone()
+            if r: return r["checksum"]
+    return None
 
 def load_channels(conn):
-    return [dict(r) for r in conn.execute("SELECT id,chno,name,group_name FROM channel WHERE active=1 ORDER BY chno")]
+    return conn.execute(
+        "SELECT id, chno, name FROM channel WHERE active=1 ORDER BY chno ASC"
+    ).fetchall()
 
-def load_plan(conn, plan_id):
+def load_slots(conn, pid):
     q = """
-    SELECT ps.*, e.*
-    FROM plan_slot ps
-    LEFT JOIN events e ON e.id = ps.event_id
-    WHERE ps.plan_id=?
-    ORDER BY ps.channel_id, ps.start_utc
+    SELECT
+      s.channel_id AS chan,
+      s.start_utc  AS slot_start,
+      s.end_utc    AS slot_stop,
+      s.event_id   AS event_id,
+      e.title      AS event_title,
+      e.subtitle   AS event_subtitle,
+      e.summary    AS event_summary,
+      e.sport      AS event_sport,
+      e.image      AS event_image
+    FROM plan_slot s
+    LEFT JOIN events e ON e.id = s.event_id
+    WHERE s.plan_id = ?
+    ORDER BY s.channel_id, s.start_utc
     """
-    return [dict(r) for r in conn.execute(q, (plan_id,)).fetchall()]
+    return conn.execute(q,(pid,)).fetchall()
 
-def fmt_xmltv_dt(iso_utc:str, tz:ZoneInfo):
-    dt_utc = datetime.fromisoformat(iso_utc).replace(tzinfo=timezone.utc)
-    dt_local = dt_utc.astimezone(tz)
-    s = dt_local.strftime("%Y%m%d%H%M%S")
-    off = dt_local.utcoffset().total_seconds()//60
-    sign = "+" if off>=0 else "-"
-    off = abs(int(off))
-    return f"{s} {sign}{off//60:02d}{off%60:02d}"
-
-def render_xml(channels, slots, tz:ZoneInfo, plan_id:int, meta):
-    out=[]
-    out.append('<?xml version="1.0" encoding="UTF-8"?>')
-    out.append(f'<!-- plan_id={plan_id} valid_from={meta.get("valid_from_utc","")} valid_to={meta.get("valid_to_utc","")} checksum={meta.get("checksum","")} -->')
-    out.append('<tv generator-info-name="espn-clean-v2.0">')
-    for c in channels:
-        out.append(f'  <channel id="{html.escape(c["id"])}">')
-        out.append(f'    <display-name>{html.escape(c["name"])}</display-name>')
-        out.append(f'    <lcn>{c["chno"]}</lcn>')
-        out.append('  </channel>')
-    for s in slots:
-        start = fmt_xmltv_dt(s["start_utc"], tz)
-        stop  = fmt_xmltv_dt(s["end_utc"], tz)
-        cid   = html.escape(s["channel_id"])
-        title = s["title"] if s.get("title") else ("Stand By" if s["kind"]=="placeholder" else "TBD")
-        title = html.escape(title)
-        out.append(f'  <programme start="{start}" stop="{stop}" channel="{cid}">')
-        out.append(f'    <title lang="en">{title}</title>')
-        if s.get("subtitle"):
-            out.append(f'    <sub-title lang="en">{html.escape(s["subtitle"])}</sub-title>')
-        cat = s["sport"] if s.get("sport") else "Sports"
-        out.append(f'    <category lang="en">{html.escape(cat)}</category>')
-        if s["kind"]=="placeholder":
-            out.append(f'    <desc lang="en">{html.escape("No live event scheduled")}</desc>')
-        elif s.get("summary"):
-            out.append(f'    <desc lang="en">{html.escape(s["summary"])}</desc>')
-        if s.get("image"):
-            out.append(f'    <icon src="{html.escape(s["image"])}"/>')
-        out.append('  </programme>')
-    out.append('</tv>')
-    return "\n".join(out)
-
-def load_plan_meta(conn, plan_id):
-    r = conn.execute("SELECT * FROM plan_run WHERE id=?", (plan_id,)).fetchone()
-    return dict(r) if r else {"valid_from_utc":"", "valid_to_utc":"", "checksum":""}
+def build_xml(ch_rows, slots, resolver_base, meta):
+    tv = ET.Element("tv", {"generator-info-name":"espn-clean-v2.0"})
+    tv.append(ET.Comment(
+        f" plan_id={meta.get('id')} valid_from={meta.get('valid_from')} "
+        f"valid_to={meta.get('valid_to')} checksum={meta.get('checksum')} "
+    ))
+    # channels
+    for ch in ch_rows:
+        c = ET.SubElement(tv, "channel", id=ch["id"])
+        ET.SubElement(c, "display-name").text = ch["name"]
+        ET.SubElement(c, "lcn").text = str(ch["chno"])
+    # programmes
+    programmes = 0
+    for r in slots:
+        chan  = r["chan"]
+        start = iso_to_xmltv(r["slot_start"])
+        stop  = iso_to_xmltv(r["slot_stop"])
+        p = ET.SubElement(tv, "programme", channel=chan, start=start, stop=stop)
+        ET.SubElement(p, "title").text = (r["event_title"] or "ESPN+ Programming")
+        if r["event_subtitle"]: ET.SubElement(p, "sub-title").text = r["event_subtitle"]
+        if r["event_summary"]:  ET.SubElement(p, "desc").text = r["event_summary"]
+        if r["event_sport"]:    ET.SubElement(p, "category").text = r["event_sport"]
+        ET.SubElement(p, "category").text = "Sports"
+        if r["event_image"]:    ET.SubElement(p, "icon", src=r["event_image"])
+        ET.SubElement(p, "url").text = f"{resolver_base}/vc/{chan}?only_live=1"
+        programmes += 1
+    # pretty
+    def indent(e, level=0):
+        i = "\n" + level*"  "
+        if len(e):
+            if not e.text or not e.text.strip(): e.text = i + "  "
+            for child in e: indent(child, level+1)
+            if not child.tail or not child.tail.strip(): child.tail = i
+        if level and (not e.tail or not e.tail.strip()): e.tail = i
+    indent(tv)
+    return ET.ElementTree(tv), programmes
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--tz", default="America/New_York")
+    ap.add_argument("--resolver-base", default=LAN_ORIGIN)
     args = ap.parse_args()
 
-    conn = connect_db(args.db)
-    plan_id = get_active_plan(conn)
-    if not plan_id:
-        jlog(level="error", event="no_active_plan"); raise SystemExit(2)
+    conn = conn_open(args.db)
+    pid = latest_plan_id(conn)
+    if pid is None:
+        print(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                          "mod":"xmltv_from_plan","event":"no_active_plan"}))
+        sys.exit(0)
+
+    vfrom, vto = compute_window(conn, pid)
+    checksum = read_checksum(conn, pid)
+    meta = {"id": pid, "valid_from": vfrom, "valid_to": vto, "checksum": checksum}
 
     channels = load_channels(conn)
-    slots = load_plan(conn, plan_id)
-    meta = load_plan_meta(conn, plan_id)
-    tz = ZoneInfo(args.tz)
+    slots    = load_slots(conn, pid)
+    tree, n  = build_xml(channels, slots, args.resolver_base, meta)
+    tree.write(args.out, encoding="utf-8", xml_declaration=True)
+    print(json.dumps({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "mod":"xmltv_from_plan","event":"xmltv_written",
+        "plan_id": pid, "out": args.out, "channels": len(channels), "programmes": n
+    }))
 
-    xml = render_xml(channels, slots, tz, plan_id, meta)
-    tmp = args.out + ".tmp"
-    with open(tmp,"w",encoding="utf-8") as f: f.write(xml)
-    os.replace(tmp, args.out)
-
-    jlog(event="xmltv_written", plan_id=plan_id, out=args.out,
-         channels=len(channels), programmes=len(slots))
-
-if __name__=="__main__":
-    try: main()
-    except Exception as e:
-        jlog(level="error", event="xmltv_failed", error=str(e))
-        raise
+if __name__ == "__main__":
+    main()
