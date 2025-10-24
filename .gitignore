@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+logs/
+out/
+data/*.sqlite3-shm
+data/*.sqlite3-wal
+*.tmp
+*.swp
+.DS_Store
