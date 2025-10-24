@@ -1,0 +1,16 @@
+[Unit]
+Description=ESPN Clean v2 pipeline (ingest -> plan -> publish)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/brad/Projects/ESPN_clean_v2
+Environment=PATH=/home/brad/Projects/ESPN_clean_v2/.venv/bin:/usr/bin:/bin
+ExecStart=/home/brad/Projects/ESPN_clean_v2/run_v2_pipeline.sh
+StandardOutput=append:/var/log/espnvc-v2/pipeline.log
+StandardError=append:/var/log/espnvc-v2/pipeline.log
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/home/brad/Projects/ESPN_clean_v2 /var/log/espnvc-v2
+NoNewPrivileges=yes

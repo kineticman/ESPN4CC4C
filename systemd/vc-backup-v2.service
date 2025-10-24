@@ -1,0 +1,8 @@
+[Unit]
+Description=Backup ESPN Clean v2 DB weekly
+[Service]
+Type=oneshot
+WorkingDirectory=/home/brad/Projects/ESPN_clean_v2
+ExecStart=/home/brad/Projects/ESPN_clean_v2/bin/backup_db.sh
+StandardOutput=append:/var/log/espnvc-v2/backup.log
+StandardError=append:/var/log/espnvc-v2/backup.log

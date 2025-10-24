@@ -1,0 +1,23 @@
+[Unit]
+Description=VC Resolver v2 (FastAPI in venv, 8094)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/brad/Projects/ESPN_clean_v2
+Environment=VC_DB=/home/brad/Projects/ESPN_clean_v2/data/eplus_vc.sqlite3
+Environment=VC_RESOLVER_ORIGIN=http://192.168.86.72:8094
+Environment=VC_CC_BASE=chrome://192.168.86.72:5589/stream?url=
+Environment=VC_CACHE_TTL=5
+Environment=VC_LOG_PATH=/var/log/espnvc-v2/vc_resolver.jsonl
+ExecStart=/home/brad/Projects/ESPN_clean_v2/.venv/bin/uvicorn bin.vc_resolver:app --host 0.0.0.0 --port 8094
+Restart=on-failure
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/home/brad/Projects/ESPN_clean_v2/out /var/log/espnvc-v2
+ReadOnlyPaths=/home/brad/Projects/ESPN_clean_v2
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
