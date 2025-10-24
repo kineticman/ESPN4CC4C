@@ -2,14 +2,25 @@
 import argparse, sqlite3, sys, json, os
 from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
-
+try:
+    from config import (
+        RESOLVER_BASE as CFG_RESOLVER_BASE,
+        PLACEHOLDER_TITLE as CFG_PH_TITLE,
+        PLACEHOLDER_SUBTITLE as CFG_PH_SUBTITLE,
+        PLACEHOLDER_SUMMARY as CFG_PH_SUMMARY,
+    )
+except Exception:
+    CFG_RESOLVER_BASE = "http://127.0.0.1:8094"
+    CFG_PH_TITLE = "Stand By"
+    CFG_PH_SUBTITLE = ""
+    CFG_PH_SUMMARY = "No live event scheduled"
 # Placeholder wording (override via env if you like)
-PH_TITLE    = os.getenv('VC_PLACEHOLDER_TITLE', 'Stand By')
-PH_SUBTITLE = os.getenv('VC_PLACEHOLDER_SUBTITLE', '')
-PH_SUMMARY  = os.getenv('VC_PLACEHOLDER_SUMMARY', 'No live event scheduled')
+PH_TITLE = os.getenv('VC_PLACEHOLDER_TITLE', CFG_PH_TITLE)
+PH_SUBTITLE = os.getenv('VC_PLACEHOLDER_SUBTITLE', CFG_PH_SUBTITLE)
+PH_SUMMARY = os.getenv('VC_PLACEHOLDER_SUMMARY', CFG_PH_SUMMARY)
 
 # Resolver origin (default to your LAN)
-LAN_ORIGIN = os.getenv('VC_RESOLVER_ORIGIN', 'http://192.168.86.72:8094')
+LAN_ORIGIN = os.getenv('VC_RESOLVER_ORIGIN', CFG_RESOLVER_BASE)
 
 def iso_to_xmltv(ts: str) -> str:
     # supports "Z" or "+00:00"

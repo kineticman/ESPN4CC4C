@@ -19,14 +19,24 @@ from datetime import datetime, timedelta, timezone, date
 from zoneinfo import ZoneInfo
 from typing import Dict, Any, List, Optional
 import requests, urllib3
+from config import (
+    WATCH_API_BASE as CFG_WATCH_API_BASE,
+    WATCH_API_KEY as CFG_WATCH_API_KEY,
+    WATCH_FEATURES as CFG_WATCH_FEATURES,
+    WATCH_DEFAULT_REGION as CFG_WATCH_DEFAULT_REGION,
+    WATCH_DEFAULT_TZ as CFG_WATCH_DEFAULT_TZ,
+    WATCH_DEFAULT_DEVICE as CFG_WATCH_DEFAULT_DEVICE,
+    WATCH_VERIFY_SSL as CFG_WATCH_VERIFY_SSL,
+)
 
-API_BASE   = "https://watch.graph.api.espn.com/api"
-API_KEY    = "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"   # you said this is public
-FEATURES   = "pbov7"
-REGION     = os.getenv("WATCH_API_REGION", "US").upper()
-TZ_DEFAULT = os.getenv("WATCH_API_TZ", "America/New_York")
-DEVICE_S   = os.getenv("WATCH_API_DEVICE", "desktop").lower()
-VERIFY_SSL = os.getenv("WATCH_API_VERIFY_SSL", "1").strip().lower() not in ("0","false","no","off")
+
+API_BASE   = CFG_WATCH_API_BASE
+API_KEY    = CFG_WATCH_API_KEY
+FEATURES   = CFG_WATCH_FEATURES
+REGION     = os.getenv('WATCH_API_REGION', CFG_WATCH_DEFAULT_REGION).upper()
+TZ_DEFAULT = os.getenv('WATCH_API_TZ', CFG_WATCH_DEFAULT_TZ)
+DEVICE_S   = os.getenv('WATCH_API_DEVICE', CFG_WATCH_DEFAULT_DEVICE).lower()
+VERIFY_SSL = os.getenv('WATCH_API_VERIFY_SSL', CFG_WATCH_VERIFY_SSL).strip().lower() not in ('0','false','no','off')
 
 if not VERIFY_SSL:
     try: urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

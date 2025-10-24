@@ -1,0 +1,17 @@
+[watch_graph]
+base   = https://watch.graph.api.espn.com/api
+api_key = 0dbf88e8-cc6d-41da-aa83-18b5c630bc5c
+features = pbov7
+region   = US
+tz       = America/New_York
+device   = desktop
+verify_ssl = true
+
+[resolver]
+# What your XML <url> entries will hit
+origin = http://127.0.0.1:8094
+# Fallback "slate" page for placeholders
+slate_url = http://127.0.0.1:8888/slate.html
+
+[paths]
+db = data/eplus_vc.sqlite3

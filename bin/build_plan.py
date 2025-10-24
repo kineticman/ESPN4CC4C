@@ -5,6 +5,20 @@
 import argparse, os, json, sqlite3, hashlib
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+try:
+    from config import (
+        BUILDER_DEFAULT_TZ as CFG_TZ,
+        BUILDER_DEFAULT_VALID_HOURS as CFG_VALID_HOURS,
+        BUILDER_DEFAULT_MIN_GAP_MINS as CFG_MIN_GAP_MINS,
+        BUILDER_DEFAULT_LANES as CFG_LANES,
+        CHANNEL_START_CHNO as CFG_CHANNEL_START_CHNO,
+    )
+except Exception:
+    CFG_TZ = "America/New_York"
+    CFG_VALID_HOURS = 72
+    CFG_MIN_GAP_MINS = 5
+    CFG_LANES = 40
+    CFG_CHANNEL_START_CHNO = 20010
 
 VERSION = "2.0.0"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -29,7 +43,9 @@ def connect_db(path:str)->sqlite3.Connection:
     conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
-def make_default_lanes(n:int=40, start_chno:int=20010):
+def make_default_lanes(n:int=40, start_chno:int=None):
+    if start_chno is None:
+        start_chno = CFG_CHANNEL_START_CHNO
     lanes = []
     for i in range(1, n+1):
         lanes.append((f"eplus{i}", start_chno + (i-1), f"ESPN+ EPlus {i}", "ESPN+ VC"))
@@ -52,11 +68,11 @@ def seed_channels_if_empty(conn:sqlite3.Connection, nlanes:int=40):
 def parse_args():
     ap = argparse.ArgumentParser(description="ESPN Clean v2.0 Plan Builder")
     ap.add_argument("--db", required=True)
-    ap.add_argument("--valid-hours", type=int, default=72)
-    ap.add_argument("--tz", default="America/New_York")
+    ap.add_argument("--valid-hours", type=int, default=CFG_VALID_HOURS)
+    ap.add_argument("--tz", default=CFG_TZ)
     ap.add_argument("--note", default="")
-    ap.add_argument("--min-gap-mins", type=int, default=5, help="min placeholder gap granularity")
-    ap.add_argument("--lanes", type=int, default=40, help="seed this many lanes if channel table empty")
+    ap.add_argument("--min-gap-mins", type=int, default=CFG_MIN_GAP_MINS, help="min placeholder gap granularity")
+    ap.add_argument("--lanes", type=int, default=CFG_LANES, help="seed this many lanes if channel table empty")
     return ap.parse_args()
 
 def load_channels(conn):

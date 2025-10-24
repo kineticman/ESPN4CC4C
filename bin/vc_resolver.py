@@ -4,12 +4,20 @@ from fastapi.responses import JSONResponse
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
 
+try:
+    from config import (
+        RESOLVER_DB_DEFAULT as CFG_DB_DEFAULT,
+        RESOLVER_SLATE_URL as CFG_SLATE_URL,
+    )
+except Exception:
+    CFG_DB_DEFAULT = CFG_DB_DEFAULT
+    CFG_SLATE_URL = ""
 app = FastAPI()
 
 DB_DEFAULT = "data/eplus_vc.sqlite3"
 
 def db() -> sqlite3.Connection:
-    db_path = os.environ.get("VC_DB", DB_DEFAULT)
+    db_path = os.getenv("VC_DB", CFG_DB_DEFAULT)
     uri = f"file:{db_path}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, check_same_thread=False, timeout=2.0)
     conn.row_factory = sqlite3.Row
@@ -99,7 +107,7 @@ def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None)
             slot = current_slot(conn, lane, at_iso)
             # no event or placeholder
             if not slot or slot.get("kind") != "event" or not slot.get("event_id"):
-                slate = os.environ.get("VC_SLATE_URL", "").strip()
+                slate = os.getenv("VC_SLATE_URL", CFG_SLATE_URL).strip()
                 if not only_live and slate:
                     return Response(status_code=302, headers={"Location": slate})
                 return Response(status_code=204 if only_live else 404)
@@ -108,7 +116,7 @@ def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None)
             if target:
                 return Response(status_code=302, headers={"Location": target})
             # event but no feed
-            slate = os.environ.get("VC_SLATE_URL", "").strip()
+            slate = os.getenv("VC_SLATE_URL", CFG_SLATE_URL).strip()
             if not only_live and slate:
                 return Response(status_code=302, headers={"Location": slate})
             return Response(status_code=204 if only_live else 404)
@@ -129,11 +137,11 @@ def debug_lane(lane: str, at: Optional[str] = None):
                     info["feed"] = best_feed_for_event(conn, slot["event_id"], slot.get("preferred_feed_id"))
                 else:
                     info["feed"] = None
-                info["slate"] = os.environ.get("VC_SLATE_URL", "").strip()
+                info["slate"] = os.getenv("VC_SLATE_URL", CFG_SLATE_URL).strip()
             except Exception as inner:
                 info["slot"] = None
                 info["feed"] = None
-                info["slate"] = os.environ.get("VC_SLATE_URL", "").strip()
+                info["slate"] = os.getenv("VC_SLATE_URL", CFG_SLATE_URL).strip()
                 info["exception"] = str(inner)
                 info["trace"] = traceback.format_exc().splitlines()[-4:]
         return JSONResponse(info)

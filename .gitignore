@@ -20,3 +20,10 @@ backups/
 releases/
 *.zip
 *.tar.gz
+data/*.sqlite3-*
+out/*
+!out/.gitkeep
+logs/*
+!logs/.gitkeep
+releases/*
+config.ini
