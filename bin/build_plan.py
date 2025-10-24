@@ -164,11 +164,18 @@ def write_plan(conn, plan_slots, start_dt_utc, end_dt_utc, note:str):
         conn.execute("INSERT INTO plan_meta(key,value) VALUES('active_plan_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(plan_id),))
     return plan_id, ck
 
+def _floor_to_half_hour(dt_obj):
+    """Floor a tz-aware datetime to :00 or :30, zeroing seconds/micros."""
+    minute = dt_obj.minute
+    floormin = 0 if minute < 30 else 30
+    return dt_obj.replace(minute=floormin, second=0, microsecond=0)
+
 def main():
     args = parse_args()
     tz = ZoneInfo(args.tz)
     start_local = datetime.now(tz).replace(second=0, microsecond=0)
     start_utc = start_local.astimezone(timezone.utc)
+    start_utc = _floor_to_half_hour(start_utc)
     end_utc = start_utc + timedelta(hours=args.valid_hours)
     min_gap = timedelta(minutes=args.min_gap_mins)
 
