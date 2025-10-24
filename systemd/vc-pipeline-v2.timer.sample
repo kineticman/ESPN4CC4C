@@ -1,0 +1,11 @@
+[Unit]
+Description=Run ESPN Clean v2 pipeline on aligned boundaries
+
+[Timer]
+OnCalendar=*:0/30
+AccuracySec=1min
+Persistent=true
+Unit=vc-pipeline-v2.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+[Unit]
+Description=ESPN Clean v2 pipeline (ingest -> plan -> publish)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=brad
+Group=brad
+WorkingDirectory=/home/brad/Projects/ESPN_clean_v2
+Environment=PATH=/home/brad/Projects/ESPN_clean_v2/.venv/bin:/usr/bin:/bin
+Environment=TZ=America/New_York
+ExecStart=/usr/bin/env bash -lc '\
+  set -euo pipefail; \
+  python3 bin/ingest_watch_graph_all_to_db.py --db data/eplus_vc.sqlite3 --days 3 --tz America/New_York; \
+  python3 bin/build_plan.py --db data/eplus_vc.sqlite3 --valid-hours 72 --tz America/New_York --note "timer"; \
+  python3 bin/xmltv_from_plan.py --db data/eplus_vc.sqlite3 --out out/virtual_channels.xml; \
+  python3 bin/m3u_from_plan.py  --db data/eplus_vc.sqlite3 --out out/virtual_channels.m3u; \
+'
+StandardOutput=append:/var/log/espnvc-v2/pipeline.log
+StandardError=append:/var/log/espnvc-v2/pipeline.log
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/home/brad/Projects/ESPN_clean_v2 /var/log/espnvc-v2
+NoNewPrivileges=yes

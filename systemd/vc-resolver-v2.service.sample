@@ -15,7 +15,7 @@ Environment=VC_RESOLVER_ORIGIN=http://192.168.86.72:8094
 Environment=VC_CC_BASE=chrome://192.168.86.72:5589/stream?url=
 Environment=VC_CACHE_TTL=5
 Environment=VC_LOG_PATH=/var/log/espnvc-v2/vc_resolver.jsonl
-Environment=VC_SLATE_URL=http://192.168.86.72/slate.mp4
+Environment=VC_SLATE_URL=http://192.168.86.72:8888/slate.html
 Environment=PYTHONUNBUFFERED=1
 
 # Uvicorn (use python -m form; clear any prior ExecStart)

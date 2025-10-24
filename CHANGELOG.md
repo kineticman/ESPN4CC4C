@@ -39,3 +39,10 @@
 3) Optional Channels lineup nudge post-publish
 
 **Tag:** `v2.0.1-night1` • **Date:** 2025-10-24 00:15 EDT • **Maintainer:** Brad Herrold
+
+## v2.0.2 — pipeline + resolver polish
+- XMLTV: placeholder title = “Stand By”; add sport-specific `<category>` plus “Live” and “Sports Event” only for real events; always include generic “Sports” for events.
+- Resolver: default fallback to slate; slate now points at local webpage (`http://<host>:8888/slate.html`).
+- M3U/XMLTV `<url>` entries call resolver without `only_live`.
+- Systemd: single pipeline timer (`vc-pipeline-v2.timer`) drives ingest→plan→publish; removed old `vc-plan` timer usage and bad flags.
+- Repo hygiene: ignore `out/`, `logs/`, `releases/`, `backups/`; moved artifacts to `releases//`; DB backups to `backups/`.
