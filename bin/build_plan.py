@@ -20,7 +20,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.0.0"
+VERSION = "2.1.2"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -72,6 +72,7 @@ def parse_args():
     ap.add_argument("--tz", default=CFG_TZ)
     ap.add_argument("--note", default="")
     ap.add_argument("--min-gap-mins", type=int, default=CFG_MIN_GAP_MINS, help="min placeholder gap granularity")
+    ap.add_argument("--align", type=int, default=30, help="grid alignment in minutes (e.g., 30 for :00/:30)")
     ap.add_argument("--lanes", type=int, default=CFG_LANES, help="seed this many lanes if channel table empty")
     return ap.parse_args()
 
@@ -104,7 +105,30 @@ def checksum_rows(rows):
         m.update(b"\n")
     return m.hexdigest()
 
-def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetime, min_gap:timedelta):
+def _floor_to_step(dt_obj, minutes: int):
+    m = (dt_obj.minute // minutes) * minutes
+    return dt_obj.replace(minute=m, second=0, microsecond=0)
+
+def _ceil_to_step(dt_obj, minutes: int):
+    base = _floor_to_step(dt_obj, minutes)
+    if base < dt_obj:
+        base = base + timedelta(minutes=minutes)
+    return base
+
+def _segmentize(start_dt, end_dt, step_mins: int):
+    """Yield (seg_start, seg_end) covering [start_dt, end_dt) on a fixed grid."""
+    if start_dt >= end_dt:
+        return
+    s = _floor_to_step(start_dt, step_mins)
+    if s < start_dt:
+        s = _ceil_to_step(start_dt, step_mins)
+    t = s
+    while t < end_dt:
+        nxt = t + timedelta(minutes=step_mins)
+        yield (t, min(nxt, end_dt))
+        t = nxt
+
+def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetime, min_gap:timedelta, align_minutes:int):
     # normalize events
     norm_events = []
     for e in events:
@@ -139,7 +163,7 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
                 timelines[cid].append((e_s, e["_t"], e["id"], "event"))
         else:
             timelines[chosen].append((e["_s"], e["_t"], e["id"], "event"))
-    # fill gaps
+    # fill gaps (raw, unsnapped)
     plan_slots = []
     for c in channels:
         cid = c["id"]
@@ -155,7 +179,21 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
             plan_slots.append({"channel_id": cid, "event_id": None, "start": cursor, "end": end_dt_utc,
                                "kind": "placeholder", "placeholder_reason": "tail_gap"})
     plan_slots.sort(key=lambda r:(r["channel_id"], r["start"]))
-    return plan_slots
+
+    # Snap all slots to grid & split across boundaries
+    snapped = []
+    for s in plan_slots:
+        for seg_s, seg_e in _segmentize(s["start"], s["end"], align_minutes):
+            snapped.append({
+                "channel_id": s["channel_id"],
+                "event_id": s["event_id"] if s["kind"] == "event" else None,
+                "start": seg_s.replace(second=0, microsecond=0),
+                "end":   seg_e.replace(second=0, microsecond=0),
+                "kind":  s["kind"] if s["kind"] == "event" else "placeholder",
+                "placeholder_reason": s["placeholder_reason"] if s["kind"] != "event" else None,
+            })
+    snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
+    return snapped
 
 def write_plan(conn, plan_slots, start_dt_utc, end_dt_utc, note:str):
     rows_for_ck = [{
@@ -180,18 +218,13 @@ def write_plan(conn, plan_slots, start_dt_utc, end_dt_utc, note:str):
         conn.execute("INSERT INTO plan_meta(key,value) VALUES('active_plan_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(plan_id),))
     return plan_id, ck
 
-def _floor_to_half_hour(dt_obj):
-    """Floor a tz-aware datetime to :00 or :30, zeroing seconds/micros."""
-    minute = dt_obj.minute
-    floormin = 0 if minute < 30 else 30
-    return dt_obj.replace(minute=floormin, second=0, microsecond=0)
-
 def main():
     args = parse_args()
     tz = ZoneInfo(args.tz)
     start_local = datetime.now(tz).replace(second=0, microsecond=0)
     start_utc = start_local.astimezone(timezone.utc)
-    start_utc = _floor_to_half_hour(start_utc)
+    # Align the window start to the requested grid
+    start_utc = _floor_to_step(start_utc, args.align)
     end_utc = start_utc + timedelta(hours=args.valid_hours)
     min_gap = timedelta(minutes=args.min_gap_mins)
 
@@ -205,7 +238,7 @@ def main():
          end_utc=end_utc.replace(tzinfo=timezone.utc).isoformat(),
          channels=len(channels), events=len(events), seeded_channels=seeded)
 
-    plan_slots = build_plan(conn, channels, events, start_utc, end_utc, min_gap)
+    plan_slots = build_plan(conn, channels, events, start_utc, end_utc, min_gap, args.align)
     by_ch = {}
     ev_count = ph_count = 0
     for s in plan_slots:
