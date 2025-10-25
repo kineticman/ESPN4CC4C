@@ -27,3 +27,9 @@ logs/*
 !logs/.gitkeep
 releases/*
 config.ini
+# runtime artifacts
+data/*.sqlite3
+logs/*.jsonl
+out/*
+__pycache__/
+*.pyc
