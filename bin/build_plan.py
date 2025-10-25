@@ -105,6 +105,27 @@ def checksum_rows(rows):
         m.update(b"\n")
     return m.hexdigest()
 
+def _now_iso_utc():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+def _load_event_lane_map(conn):
+    try:
+        rows = conn.execute("SELECT event_id, channel_id FROM event_lane").fetchall()
+        return {r["event_id"]: r["channel_id"] for r in rows}
+    except Exception:
+        return {}
+
+def _upsert_event_lane(conn, event_id:str, channel_id:str):
+    now = _now_iso_utc()
+    conn.execute("""
+        INSERT INTO event_lane(event_id, channel_id, pinned_at_utc, last_seen_utc)
+        VALUES(?,?,?,?)
+        ON CONFLICT(event_id) DO UPDATE SET
+          channel_id=excluded.channel_id,
+          last_seen_utc=excluded.last_seen_utc
+    """, (event_id, channel_id, now, now))
+
+
 def _floor_to_step(dt_obj, minutes: int):
     m = (dt_obj.minute // minutes) * minutes
     return dt_obj.replace(minute=m, second=0, microsecond=0)
@@ -128,7 +149,7 @@ def _segmentize(start_dt, end_dt, step_mins: int):
         yield (t, min(nxt, end_dt))
         t = nxt
 
-def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetime, min_gap:timedelta, align_minutes:int):
+def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetime, min_gap:timedelta, align_minutes:int, _sticky_map=None):
     # normalize events
     norm_events = []
     for e in events:
