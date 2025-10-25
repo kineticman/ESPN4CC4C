@@ -20,7 +20,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.0.0"
+VERSION = "2.1.2"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
