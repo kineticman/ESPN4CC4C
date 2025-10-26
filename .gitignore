@@ -65,3 +65,21 @@ __pycache__/
 # OS/editor junk
 .DS_Store
 *.swp
+# local env & secrets
+.env.plan
+
+# Python cruft
+__pycache__/
+*.pyc
+
+# venv
+.venv/
+
+# generated data & outputs
+data/*.sqlite3
+out/*
+logs/*
+
+# editors
+*.swp
+*.bak*
