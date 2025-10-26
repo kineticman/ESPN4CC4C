@@ -1,158 +1,148 @@
-# ESPN Clean v2
+# ESPN4CC4C (ESPN Clean v2)
 
-Virtual-channel pipeline that ingests ESPN Watch Graph airings, packs them into 40 “EPlus” lanes, and publishes an XMLTV EPG, M3U playlist, and a live resolver (FastAPI) that redirects each lane to its best available stream.
+Virtual-channel pipeline that ingests ESPN Watch Graph airings, packs them into 40 “EPlus” lanes, and publishes an XMLTV EPG, M3U playlist, and live FastAPI resolver that redirects each lane to its best available stream.
+
+---
 
 ## TL;DR
-- **Ingest → Plan → Publish** on a schedule (systemd timers).
-- **Placeholders** auto-align to `:00` / `:30` and are titled **Stand By**.
-- **XMLTV** backdates programme start to true event start (so progress bars make sense).
-- **Resolver** serves `epg.xml`, `playlist.m3u`, `/vc/<lane>` (302 to stream), and `/vc/<lane>/debug`.
+
+- **Ingest → Plan → Publish** automatically on a systemd schedule  
+- Placeholders auto-align to `:00` / `:30` and show **“Stand By”**  
+- XMLTV back-dates programme start to the real event start  
+- Resolver serves:  
+  `/epg.xml`, `/playlist.m3u`, `/vc/<lane>` (302 redirect), `/vc/<lane>/debug`
 
 ---
 
 ## Quick start
 
 ```bash
-git clone https://github.com/kineticman/ESPN4CC4C.git ESPN_clean_v2
-cd ESPN_clean_v2
+git clone https://github.com/kineticman/ESPN4CC4C.git ~/Projects/ESPN4CC
+cd ~/Projects/ESPN4CC
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-cp config.ini.sample config.ini   # edit as needed
-```
 
-Initialize the DB (tables will be created on first ingest):
-```bash
+# create initial DB
 python3 bin/ingest_watch_graph_all_to_db.py --db data/eplus_vc.sqlite3 --days 1 --tz America/New_York
 python3 bin/build_plan.py --db data/eplus_vc.sqlite3 --valid-hours 72 --tz America/New_York
 python3 bin/xmltv_from_plan.py --db data/eplus_vc.sqlite3 --out out/epg.xml
-python3 bin/m3u_from_plan.py  --db data/eplus_vc.sqlite3 --out out/playlist.m3u
+python3 bin/m3u_from_plan.py   --db data/eplus_vc.sqlite3 --out out/playlist.m3u
 ```
 
-Start the resolver (dev):
+### Start resolver (dev)
+
 ```bash
-uvicorn bin.vc_resolver:app --host 0.0.0.0 --port 8094
-# Health:        http://HOST:8094/health
-# EPG:           http://HOST:8094/epg.xml
-# Playlist:      http://HOST:8094/playlist.m3u
-# Live redirect: http://HOST:8094/vc/eplus11
-# Debug:         http://HOST:8094/vc/eplus11/debug
+uvicorn vc_resolver.app:app --host 0.0.0.0 --port 8094
 ```
+
+| Endpoint | Purpose |
+|-----------|----------|
+| `/health` | simple ping |
+| `/epg.xml` | current XMLTV |
+| `/playlist.m3u` | M3U pointing to lanes |
+| `/vc/<lane>` | 302 redirect to stream |
+| `/vc/<lane>/debug` | JSON debug for lane |
 
 ---
 
-## What’s in here
+## Components
 
-### Components
-- `bin/ingest_watch_graph_all_to_db.py`  
-  Pulls ESPN Watch Graph airings → stores in `events` + `feeds`.
-- `bin/build_plan.py`  
-  Packs events greedily across lanes, inserts placeholders, writes `plan_run` + `plan_slot`.
-- `bin/xmltv_from_plan.py`  
-  Renders XMLTV from latest plan. Placeholders use `Stand By`. Event titles/categories preserved. `desc` includes short code + sport + title.
-- `bin/m3u_from_plan.py`  
-  Renders M3U pointing each lane at resolver `/vc/<lane>`.
-- `bin/vc_resolver.py` (FastAPI)  
-  - `/health`  
-  - `/epg.xml` → `out/virtual_channels.xml`  
-  - `/playlist.m3u` → `out/virtual_channels.m3u`  
-  - `/vc/<lane>` → 302 to best event feed (or 404/204/Slate)  
-  - `/vc/<lane>/debug` → JSON (slot/feed/now)
+| File | Role |
+|------|------|
+| `bin/ingest_watch_graph_all_to_db.py` | Fetch ESPN Watch Graph → SQLite (`events`, `feeds`) |
+| `bin/build_plan.py` | Pack events into 40 lanes, insert placeholders |
+| `bin/xmltv_from_plan.py` | Generate XMLTV |
+| `bin/m3u_from_plan.py` | Generate M3U |
+| `vc_resolver/app.py` | FastAPI resolver |
+| `tools/vc_diag.py` | Self-check tool for services, DB, XMLTV parity |
 
-### Data model (SQLite)
-- `events(id, start_utc, stop_utc, title, sport, subtitle, summary, image)`
-- `feeds(id, event_id→events.id, url, is_primary)`
-- `channel(id, chno, name, group_name, active)`
-- `plan_run(id, generated_at_utc, valid_from_utc, valid_to_utc, source_version, note, checksum)`
-- `plan_slot(plan_id→plan_run.id, channel_id, event_id, start_utc, end_utc, kind, placeholder_reason, preferred_feed_id)`
-- `plan_meta(key, value)` (stores `active_plan_id` pointer)
+---
+
+## Data model (SQLite)
+
+- **events** (id, start_utc, stop_utc, title, sport, subtitle, summary, image)  
+- **feeds** (id, event_id → events.id, url, is_primary)  
+- **channel** (id, chno, name, group_name, active)  
+- **plan_run** (id, generated_at_utc, valid_from_utc, valid_to_utc, checksum, note)  
+- **plan_slot** (plan_id → plan_run.id, channel_id, event_id, start_utc, end_utc, kind, placeholder_reason, preferred_feed_id)  
+- **plan_meta** (key, value) – stores active plan pointer  
 
 ---
 
 ## Configuration
 
-All knobs can be set by **env** or **config.ini** (with env taking precedence). See `config.ini.sample`.
+Environment variables or `.env.plan` (env wins). Example:
 
-**Watch Graph:**
-- `WATCH_API_BASE` (default: `https://watch.graph.api.espn.com/api`)
-- `WATCH_API_KEY` (public key provided)
-- `WATCH_FEATURES` (default: `pbov7`)
-- `WATCH_API_REGION` (`US`)
-- `WATCH_API_TZ` (`America/New_York`)
-- `WATCH_API_DEVICE` (`desktop|mobile|tv`)
-- `WATCH_API_VERIFY_SSL` (`1|0`)
-
-**Resolver / outputs:**
-- `VC_DB` → SQLite path (default `data/eplus_vc.sqlite3`)
-- `VC_RESOLVER_ORIGIN` → used by XMLTV/M3U links (default `http://HOST:8094`)
-- `VC_SLATE_URL` → optional slate page for placeholders
-- Placeholder text:  
-  `VC_PLACEHOLDER_TITLE`, `VC_PLACEHOLDER_SUBTITLE`, `VC_PLACEHOLDER_SUMMARY`
-
----
-
-## Systemd (recommended)
-
-Install units (samples in `systemd/`):
-
-- **Pipeline (every 30 min):**
-  - `vc-pipeline-v2.service` → ingest → build_plan → xmltv → m3u
-  - `vc-pipeline-v2.timer`   → `OnCalendar=*:/0,30`
-- **Resolver API:**
-  - `vc-resolver-v2.service` → uvicorn FastAPI on :8094
-
-Environment file example `/etc/systemd/system/espnvc-v2.env`:
 ```ini
-VC_DB=/home/brad/Projects/ESPN_clean_v2/data/eplus_vc.sqlite3
-VC_RESOLVER_ORIGIN=http://192.168.86.72:8094
-VC_SLATE_URL=http://192.168.86.72:8094/slate
+DB=/home/brad/Projects/ESPN4CC/data/eplus_vc.sqlite3
+OUT=/home/brad/Projects/ESPN4CC/out/epg.xml
+RESOLVER_BASE=http://127.0.0.1:8094
 TZ=America/New_York
-
-WATCH_API_REGION=US
-WATCH_API_TZ=America/New_York
-WATCH_API_DEVICE=desktop
-WATCH_API_VERIFY_SSL=1
-```
-
-Enable:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now vc-pipeline-v2.timer
-sudo systemctl enable --now vc-resolver-v2.service
-journalctl -u vc-pipeline-v2.service -f
-journalctl -u vc-resolver-v2.service -f
+VALID_HOURS=72
+LANES=40
+ALIGN=30
+MIN_GAP_MINS=30
+PORT=8094
 ```
 
 ---
-
-## Usage notes
-
-- Placeholders align to `:00`/`:30`.  
-- XMLTV start is **backdated** to true event start for accurate progress bars.  
-- Resolver prefers `feeds.is_primary DESC, id DESC` and honors `preferred_feed_id` if set.
-
----
-
-## Troubleshooting
-
-- **No module named `fastapi`** → `pip install -r requirements.txt` inside `.venv` and ensure the unit uses `.venv/bin/python`.
-- **“unrecognized arguments”** → older flags were removed (e.g., `--tz` for `xmltv_from_plan.py`).
-- **Resolver 500** → check `/vc/<lane>/debug`, confirm DB path (`VC_DB`) and that `plan_slot` has a current event.
-
----
-
-## License
-MIT (or your preferred license)
 
 ## Systemd install quickstart
 
-See [contrib/systemd/README.md](contrib/systemd/README.md) for full instructions.
+The repo ships with templated units under `contrib/systemd/` **and** a `Makefile`.
 
-**Makefile (recommended):**
+### Option A — Makefile (recommended)
 
-```
+```bash
 make systemd-install USER=brad PROJECT_DIR=/home/brad/Projects/ESPN4CC
 make systemd-status USER=brad
 make plan-run USER=brad
 make resolver-restart USER=brad
 make diag LANE=eplus11 QUIET=1
 ```
+
+### Option B — manual install
+
+```bash
+PROJECT_DIR=/home/brad/Projects/ESPN4CC
+sudo install -Dm0644 contrib/systemd/vc-resolver-v2.service /etc/systemd/system/vc-resolver-v2@.service
+sudo install -Dm0644 contrib/systemd/vc-plan.service       /etc/systemd/system/vc-plan@.service
+sudo install -Dm0644 contrib/systemd/vc-plan.timer         /etc/systemd/system/vc-plan@.timer
+sudo sed -i "s|\${PROJECT_DIR}|$PROJECT_DIR|g" /etc/systemd/system/vc-resolver-v2@.service
+sudo sed -i "s|\${PROJECT_DIR}|$PROJECT_DIR|g" /etc/systemd/system/vc-plan@.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now vc-resolver-v2@brad.service
+sudo systemctl enable --now vc-plan@brad.timer
+```
+
+➡ See [`contrib/systemd/README.md`](contrib/systemd/README.md) for full details.
+
+---
+
+## Diagnostics
+
+```bash
+python3 tools/vc_diag.py --lane eplus11 --quiet-errors
+```
+
+Output summary includes:
+- service status
+- resolver endpoint health
+- DB vs XMLTV programme & channel counts
+- current slot and feeds
+- fleet placeholder ratio  
+*(all ✅ when healthy)*
+
+---
+
+## Troubleshooting
+
+- **Module not found** → ensure `.venv/bin/python` used in unit  
+- **“unrecognized arguments”** → upgrade scripts (`--tz` removed for xmltv)  
+- **Resolver 500** → check `/vc/<lane>/debug` and DB path in `.env.plan`  
+- **NAMESPACE errors** → verify `ReadWritePaths=${PROJECT_DIR}` in service  
+
+---
+
+## License
+MIT (or your preferred license)
