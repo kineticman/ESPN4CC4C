@@ -1,0 +1,13 @@
+# contrib/systemd/vc-plan.timer
+[Unit]
+Description=Run vc-plan.service every 30 minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=30m
+Unit=vc-plan@%i.service
+AccuracySec=1m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

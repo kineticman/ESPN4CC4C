@@ -1,0 +1,30 @@
+# contrib/systemd/vc-resolver-v2.service
+[Unit]
+Description=ESPN4CC4C - Resolver API (FastAPI/uvicorn)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=${PROJECT_DIR}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${PROJECT_DIR}/.env.plan
+
+ExecStart=${PROJECT_DIR}/.venv/bin/python -m uvicorn vc_resolver.app:app --host 0.0.0.0 --port ${PORT:-8094}
+
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=30s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+
+ProtectSystem=full
+PrivateTmp=true
+ProtectHome=false
+ReadWritePaths=${PROJECT_DIR} /tmp
+WorkingDirectory=${PROJECT_DIR}
+
+[Install]
+WantedBy=multi-user.target
