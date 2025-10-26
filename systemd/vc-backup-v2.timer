@@ -1,7 +1,0 @@
-[Unit]
-Description=Weekly DB backup for ESPN Clean v2
-[Timer]
-OnCalendar=Sun *-*-* 03:10:00
-Persistent=true
-[Install]
-WantedBy=timers.target

@@ -1,9 +1,0 @@
-[Unit]
-Description=Run ESPN Clean v2 pipeline hourly
-
-[Timer]
-OnCalendar=hourly
-Persistent=true
-
-[Install]
-WantedBy=timers.target

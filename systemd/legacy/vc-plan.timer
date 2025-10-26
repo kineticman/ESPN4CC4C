@@ -1,9 +1,0 @@
-[Unit]
-Description=Run ESPN Clean v2.0 plan build hourly
-
-[Timer]
-OnCalendar=*:00/60
-Persistent=true
-
-[Install]
-WantedBy=timers.target
