@@ -4,6 +4,8 @@
 # Version with "sticky lanes" via event_lane table
 
 import argparse, os, json, sqlite3, hashlib
+from version import get_version, VERSION
+RUNTIME_VERSION = get_version()
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
