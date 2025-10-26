@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 from fastapi import FastAPI, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
@@ -27,6 +28,35 @@ except Exception:
 app = FastAPI()
 
 
+
+
+@app.middleware("http")
+async def _debug_slate_mid(request: Request, call_next):
+    resp = await call_next(request)
+    p = request.url.path
+    if resp.status_code == 200 and p.startswith('/vc/') and p.endswith('/debug'):
+        try:
+            lane = p.split('/')[2]
+            # Capture body bytes from StreamingResponse/JSONResponse
+            body = b''
+            if hasattr(resp, 'body_iterator') and resp.body_iterator is not None:
+                async for chunk in resp.body_iterator:
+                    body += chunk
+            elif hasattr(resp, 'body') and isinstance(resp.body, (bytes, bytearray)):
+                body = bytes(resp.body)
+            if body:
+                data = json.loads(body.decode('utf-8'))
+                if isinstance(data, dict) and not data.get('slate'):
+                    data['slate'] = _slate_url(lane)
+                    new = JSONResponse(content=data, status_code=resp.status_code)
+                    # Preserve headers except length (will be recalculated)
+                    for k, v in resp.headers.items():
+                        if k.lower() != 'content-length':
+                            new.headers[k] = v
+                    return new
+        except Exception:
+            pass
+    return resp
 @app.middleware("http")
 async def _slate_mid(request: Request, call_next):
     resp = await call_next(request)
@@ -162,6 +192,7 @@ def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None)
 
 @app.get("/vc/{lane}/debug")
 def debug_lane(lane: str, at: Optional[str] = None):
+    _sl = _slate_url(lane)
     slate_url = _slate_url(lane)
     info = {"lane": lane}
     try:
@@ -182,6 +213,14 @@ def debug_lane(lane: str, at: Optional[str] = None):
                 info["slate"] = os.getenv("VC_SLATE_URL", CFG_SLATE_URL).strip()
                 info["exception"] = str(inner)
                 info["trace"] = traceback.format_exc().splitlines()[-4:]
+        try:
+            _resp
+        except NameError:
+            _resp = None
+        try:
+            (out if 'out' in locals() else _resp)['slate'] = _slate_url(lane)
+        except Exception:
+            pass
         return JSONResponse(info)
     except Exception as outer:
         info["error"] = str(outer)
