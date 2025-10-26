@@ -142,3 +142,17 @@ journalctl -u vc-resolver-v2.service -f
 
 ## License
 MIT (or your preferred license)
+
+## Systemd install quickstart
+
+See [contrib/systemd/README.md](contrib/systemd/README.md) for full instructions.
+
+**Makefile (recommended):**
+
+```
+make systemd-install USER=brad PROJECT_DIR=/home/brad/Projects/ESPN4CC
+make systemd-status USER=brad
+make plan-run USER=brad
+make resolver-restart USER=brad
+make diag LANE=eplus11 QUIET=1
+```
