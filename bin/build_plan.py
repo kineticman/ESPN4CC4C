@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # file: bin/build_plan.py
 # ESPN Clean v2.0 — canonical plan builder (events -> plan_run/plan_slot)
+# Version with "sticky lanes" via event_lane table
 
 import argparse, os, json, sqlite3, hashlib
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
 try:
     from config import (
         BUILDER_DEFAULT_TZ as CFG_TZ,
@@ -20,11 +22,12 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.2"
+VERSION = "2.2.0-sticky"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, "plan_builder.jsonl")
+STICKY_GRACE = timedelta(seconds=0)  # lane must be free at event start
 
 def jlog(**kv):
     kv = {"ts": datetime.now(timezone.utc).isoformat(), "mod":"build_plan", **kv}
@@ -108,14 +111,24 @@ def checksum_rows(rows):
 def _now_iso_utc():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
+def _ensure_event_lane_table(conn: sqlite3.Connection):
+    with conn:
+        conn.execute("""
+          CREATE TABLE IF NOT EXISTS event_lane(
+            event_id TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            pinned_at_utc TEXT NOT NULL,
+            last_seen_utc TEXT NOT NULL
+          )
+        """)
+
 def _load_event_lane_map(conn):
-    try:
-        rows = conn.execute("SELECT event_id, channel_id FROM event_lane").fetchall()
-        return {r["event_id"]: r["channel_id"] for r in rows}
-    except Exception:
-        return {}
+    _ensure_event_lane_table(conn)
+    rows = conn.execute("SELECT event_id, channel_id FROM event_lane").fetchall()
+    return {r["event_id"]: r["channel_id"] for r in rows}
 
 def _upsert_event_lane(conn, event_id:str, channel_id:str):
+    _ensure_event_lane_table(conn)
     now = _now_iso_utc()
     conn.execute("""
         INSERT INTO event_lane(event_id, channel_id, pinned_at_utc, last_seen_utc)
@@ -125,6 +138,26 @@ def _upsert_event_lane(conn, event_id:str, channel_id:str):
           last_seen_utc=excluded.last_seen_utc
     """, (event_id, channel_id, now, now))
 
+def _seed_event_lane_from_latest_plan(conn):
+    """
+    If event_lane is empty, seed it from the latest plan's event slots.
+    """
+    _ensure_event_lane_table(conn)
+    have = conn.execute("SELECT COUNT(*) AS n FROM event_lane").fetchone()["n"]
+    if have > 0:
+        return 0
+    row = conn.execute("SELECT MAX(plan_id) AS pid FROM plan_slot").fetchone()
+    if not row or row["pid"] is None:
+        return 0
+    pid = int(row["pid"])
+    events = conn.execute("""
+      SELECT DISTINCT event_id, channel_id FROM plan_slot
+       WHERE plan_id=? AND kind='event' AND event_id IS NOT NULL
+    """,(pid,)).fetchall()
+    with conn:
+        for r in events:
+            _upsert_event_lane(conn, r["event_id"], r["channel_id"])
+    return len(events)
 
 def _floor_to_step(dt_obj, minutes: int):
     m = (dt_obj.minute // minutes) * minutes
@@ -149,7 +182,8 @@ def _segmentize(start_dt, end_dt, step_mins: int):
         yield (t, min(nxt, end_dt))
         t = nxt
 
-def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetime, min_gap:timedelta, align_minutes:int, _sticky_map=None):
+def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetime,
+               min_gap:timedelta, align_minutes:int, _sticky_map=None):
     # normalize events
     norm_events = []
     for e in events:
@@ -166,24 +200,54 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
             continue
         e2 = dict(e); e2["_s"]=s; e2["_t"]=t
         norm_events.append(e2)
-    # greedy pack by start time
-    timelines = {c["id"]: [] for c in channels}
+
+    # timelines[channel_id] -> list of (start,end,event_id,kind)
+    channels_sorted = [c["id"] for c in sorted(channels, key=lambda x: x["chno"])]
+    timelines = {cid: [] for cid in channels_sorted}
+    sticky_map = dict(_sticky_map or {})
+    new_sticky = []  # (event_id, channel_id)
+
+    # greedy in start order; prefer sticky lane if free
     norm_events.sort(key=lambda e: e["_s"])
     for e in norm_events:
+        preferred = sticky_map.get(e["id"])
         chosen = None
-        best_free = None
-        for cid,timeline in timelines.items():
-            free_at = timeline[-1][1] if timeline else start_dt_utc
-            if free_at <= e["_s"] and (best_free is None or free_at < best_free):
-                best_free = free_at; chosen = cid
+
+        # 1) Sticky lane if free
+        if preferred in timelines:
+            tl = timelines[preferred]
+            free_at = tl[-1][1] if tl else start_dt_utc
+            if free_at <= e["_s"]:
+                chosen = preferred
+
+        # 2) Earliest-free lane (deterministic by chno)
         if chosen is None:
-            cid = min(timelines.keys(), key=lambda k: timelines[k][-1][1] if timelines[k] else start_dt_utc)
-            free_t = timelines[cid][-1][1] if timelines[cid] else start_dt_utc
-            if free_t < e["_t"]:
-                e_s = max(e["_s"], free_t)
-                timelines[cid].append((e_s, e["_t"], e["id"], "event"))
-        else:
-            timelines[chosen].append((e["_s"], e["_t"], e["id"], "event"))
+            best_free = None
+            best_cid = None
+            for cid in channels_sorted:
+                tl = timelines[cid]
+                free_at = tl[-1][1] if tl else start_dt_utc
+                if free_at <= e["_s"] and (best_free is None or free_at < best_free):
+                    best_free = free_at; best_cid = cid
+            if best_cid is None:
+                # no lane free yet: take the one that frees earliest, start when free
+                cid = min(channels_sorted, key=lambda k: timelines[k][-1][1] if timelines[k] else start_dt_utc)
+                free_t = timelines[cid][-1][1] if timelines[cid] else start_dt_utc
+                if free_t < e["_t"]:
+                    e_s = max(e["_s"], free_t)
+                    timelines[cid].append((e_s, e["_t"], e["id"], "event"))
+                    if preferred is None and sticky_map.get(e["id"]) != cid:
+                        sticky_map[e["id"]] = cid
+                        new_sticky.append((e["id"], cid))
+                continue
+            chosen = best_cid
+
+        # 3) Place on chosen lane
+        timelines[chosen].append((e["_s"], e["_t"], e["id"], "event"))
+        if preferred is None and sticky_map.get(e["id"]) != chosen:
+            sticky_map[e["id"]] = chosen
+            new_sticky.append((e["id"], chosen))
+
     # fill gaps (raw, unsnapped)
     plan_slots = []
     for c in channels:
@@ -214,6 +278,14 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
                 "placeholder_reason": s["placeholder_reason"] if s["kind"] != "event" else None,
             })
     snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
+
+    # Persist new sticky choices
+    if new_sticky:
+        with conn:
+            for eid, cid in new_sticky:
+                _upsert_event_lane(conn, eid, cid)
+        jlog(event="sticky_upserts", count=len(new_sticky))
+
     return snapped
 
 def write_plan(conn, plan_slots, start_dt_utc, end_dt_utc, note:str):
@@ -254,12 +326,17 @@ def main():
     channels = load_channels(conn)
     events = load_events(conn, start_utc.replace(tzinfo=timezone.utc).isoformat(), end_utc.replace(tzinfo=timezone.utc).isoformat())
 
+    # Sticky: seed from latest plan once, then load map
+    seeded_sticky = _seed_event_lane_from_latest_plan(conn)
+    sticky_map = _load_event_lane_map(conn)
+
     jlog(event="plan_build_start", version=VERSION, db=args.db, valid_hours=args.valid_hours,
          tz=args.tz, start_utc=start_utc.replace(tzinfo=timezone.utc).isoformat(),
          end_utc=end_utc.replace(tzinfo=timezone.utc).isoformat(),
-         channels=len(channels), events=len(events), seeded_channels=seeded)
+         channels=len(channels), events=len(events),
+         seeded_channels=seeded, seeded_sticky=seeded_sticky, sticky_entries=len(sticky_map))
 
-    plan_slots = build_plan(conn, channels, events, start_utc, end_utc, min_gap, args.align)
+    plan_slots = build_plan(conn, channels, events, start_utc, end_utc, min_gap, args.align, _sticky_map=sticky_map)
     by_ch = {}
     ev_count = ph_count = 0
     for s in plan_slots:
