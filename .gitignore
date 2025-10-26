@@ -83,3 +83,21 @@ logs/*
 # editors
 *.swp
 *.bak*
+# local env
+.env.plan
+
+# python
+__pycache__/
+*.pyc
+
+# venv
+.venv/
+
+# generated data/outputs/logs
+data/*.sqlite3
+out/*
+logs/*
+
+# editor junk
+*.swp
+*.bak*
