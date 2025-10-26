@@ -1,0 +1,39 @@
+# contrib/systemd/vc-plan.service
+[Unit]
+Description=ESPN4CC4C - Build plan (sticky) + regenerate XML/M3U
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=%i
+Group=%i
+WorkingDirectory=${PROJECT_DIR}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${PROJECT_DIR}/.env.plan
+
+ExecStart=/usr/bin/env bash -lc '\
+  set -euo pipefail; \
+  cd "${PROJECT_DIR}"; \
+  . .venv/bin/activate || true; \
+  python3 bin/build_plan.py \
+      --db "$DB" \
+      --tz "${TZ:-America/New_York}" \
+      --valid-hours "${VALID_HOURS:-72}" \
+      --lanes "${LANES:-40}" \
+      --align "${ALIGN:-30}" \
+      --min-gap-mins "${MIN_GAP_MINS:-30}" \
+  && python3 bin/xmltv_from_plan.py \
+      --db "$DB" \
+      --out "${OUT:-${PROJECT_DIR}/out/epg.xml}" \
+      --resolver-base "${RESOLVER_BASE:-http://127.0.0.1:8094}" \
+'
+
+ProtectSystem=full
+PrivateTmp=true
+ProtectHome=false
+ReadWritePaths=${PROJECT_DIR} /tmp
+WorkingDirectory=${PROJECT_DIR}
+NoNewPrivileges=true
+
+RemainAfterExit=no
