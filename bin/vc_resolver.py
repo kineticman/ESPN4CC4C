@@ -174,7 +174,7 @@ def slate_page():
 @app.get("/epg.xml")
 def epg_xml():
     """Latest XMLTV from out/virtual_channels.xml"""
-    path = os.path.join(OUT_DIR, "virtual_channels.xml")
+    path = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "virtual_channels.xml"))
     if os.path.exists(path):
         return FileResponse(path, media_type="application/xml")
     return Response("XMLTV not found", status_code=404, media_type="text/plain")
@@ -182,7 +182,7 @@ def epg_xml():
 @app.get("/playlist.m3u")
 def playlist_m3u():
     """Latest M3U from out/virtual_channels.m3u"""
-    path = os.path.join(OUT_DIR, "virtual_channels.m3u")
+    path = os.getenv("VC_M3U_PATH", os.path.join(OUT_DIR, "virtual_channels.m3u"))
     if os.path.exists(path):
         # Correct-ish MIME for M3U
         return FileResponse(path, media_type="audio/x-mpegurl", filename="virtual_channels.m3u")
