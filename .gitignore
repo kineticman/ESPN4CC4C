@@ -49,3 +49,19 @@ __pycache__/
 # OS/editor junk
 .DS_Store
 *.swp
+# venv & Python
+.venv/
+__pycache__/
+*.pyc
+
+# local config & secrets
+.env*
+*.sqlite3
+
+# generated outputs
+/out/
+/logs/
+
+# OS/editor junk
+.DS_Store
+*.swp
