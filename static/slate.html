@@ -1,21 +1,38 @@
-<!doctype html><html><head>
+<!doctype html>
+<html><head>
 <meta charset="utf-8"><title>Stand By</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
+<!-- no-cache so changes show immediately -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
 <style>
   html,body{height:100%;margin:0}
   body{background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font:16px system-ui}
   h1{font-size:8vmin;margin:.2em 0}.muted{opacity:.8;font-size:3vmin}
   .dot{animation:pulse 2s infinite}
+  .badge{display:inline-block;border:1px solid #555;border-radius:4px;padding:.2em .5em;margin-top:.5em;font-size:2.4vmin;opacity:.85}
   @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
 </style>
 </head><body><div style="text-align:center">
   <h1 class="dot">Stand By</h1>
   <div class="muted">No live event scheduled</div>
   <div id="clock" class="muted"></div>
+  <div id="lane" class="badge" style="display:none"></div>
 </div>
 <script>
-  const f=new Intl.DateTimeFormat([], {dateStyle:'medium', timeStyle:'medium'});
-  setInterval(()=>clock.textContent=f.format(new Date()),1000);
-  clock.textContent=f.format(new Date());
+  const clockEl = document.getElementById('clock');
+  const laneEl  = document.getElementById('lane');
+  const fmt = new Intl.DateTimeFormat([], {dateStyle:'medium', timeStyle:'medium'});
+  setInterval(()=>clockEl.textContent = fmt.format(new Date()), 1000);
+  clockEl.textContent = fmt.format(new Date());
+
+  const lane = new URLSearchParams(location.search).get('lane');
+  if (lane) {
+    laneEl.textContent = 'Lane: ' + lane.toUpperCase();
+    laneEl.style.display = 'inline-block';
+  }
 </script>
 </body></html>
