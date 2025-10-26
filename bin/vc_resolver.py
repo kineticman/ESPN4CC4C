@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
 from fastapi import FastAPI, Response, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
+
+# --- slate support ---
+SLATE_TMPL = os.getenv('VC_SLATE_URL_TEMPLATE', '/static/standby.html?lane={lane}')
+def _slate_url(lane: str) -> str:
+    tmpl = SLATE_TMPL
+    try:
+        return tmpl.format(lane=lane) if tmpl else ''
+    except Exception:
+        return ''
+def slate_redirect(lane: str):
+    url = _slate_url(lane)
+    return RedirectResponse(url, status_code=302) if url else None
+# --- end slate support ---
 
 try:
     from config import (
@@ -13,6 +26,17 @@ except Exception:
     CFG_SLATE_URL = ""
 app = FastAPI()
 
+
+@app.middleware("http")
+async def _slate_mid(request: Request, call_next):
+    resp = await call_next(request)
+    p = request.url.path
+    if resp.status_code == 404 and p.startswith('/vc/') and p.count('/') == 2:
+        lane = p.split('/')[2]
+        url = _slate_url(lane)
+        if url:
+            return RedirectResponse(url, status_code=302)
+    return resp
 import os
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 OUT_DIR = os.path.join(BASE_DIR, "out")
@@ -138,6 +162,7 @@ def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None)
 
 @app.get("/vc/{lane}/debug")
 def debug_lane(lane: str, at: Optional[str] = None):
+    slate_url = _slate_url(lane)
     info = {"lane": lane}
     try:
         at_iso = parse_at(at)
