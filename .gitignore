@@ -101,3 +101,6 @@ logs/*
 # editor junk
 *.swp
 *.bak*
+
+# Docker
+.env
