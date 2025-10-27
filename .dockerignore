@@ -1,9 +1,9 @@
-.venv/
+.git
+.venv
 __pycache__/
 *.pyc
-.git/
-*.md
 data/
 out/
 logs/
 .env
+*.md~
