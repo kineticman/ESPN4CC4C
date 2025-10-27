@@ -1,112 +1,563 @@
-ESPN4CC4C — ESPN+ Virtual Channels for Channels DVR
+# 🏈 ESPN4CC4C - Docker Edition
 
-Status: ✅ Production-ready
-Deployment: Containerized (single Docker container) or legacy systemd
-Endpoints: http://<HOST>:8094/health, /epg.xml, /playlist.m3u, /vc/<lane>
+> **ESPN+ for Chrome Capture For Channels** - Dockerized for easy deployment
 
-----------------------------------------------------------------
+Transform ESPN+ content into 40 virtual channels for your Channels DVR, all running in a single, self-contained Docker container.
 
-What is this?
-ESPN4CC4C builds ~40 virtual channels from ESPN+ event data and exposes:
-- XMLTV (/epg.xml) for guide data
-- M3U (/playlist.m3u) for Channel stream entries
-- Resolver (/vc/<lane>) that redirects to the correct ESPN Watch player (used by ChromeCapture → Channels DVR)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-----------------------------------------------------------------
+-----
 
-CONTAINERIZED DEPLOYMENT (RECOMMENDED)
+## ✨ Features
 
-We now support a single-container install that bundles:
-- FastAPI resolver (uvicorn) — PID 1
-- Cron scheduler — runs ingest → plan → XML/M3U generation on a schedule
-- Health checks + readiness gate — GET /health only (no HEAD)
-- Log rotation + weekly SQLite VACUUM
-- Timezone inside container (America/New_York)
+- 🎯 **40 Virtual Channels** - Automatically organized ESPN+ streams
+- 📺 **Full EPG Support** - XMLTV guide data for all channels
+- 🔄 **Auto-Scheduling** - Smart event planning with no overlaps
+- 🐳 **Single Container** - Everything bundled together
+- 📦 **Persistent Data** - SQLite database survives restarts
+- ⏱️ **Automated Updates** - Schedule refreshes every 6 hours
+- 🏥 **Health Monitoring** - Built-in health checks
+- 🚀 **Easy Deployment** - Just `docker-compose up -d`
 
-Quick start:
-  git clone https://github.com/kineticman/ESPN4CC4C.git
-  cd ESPN4CC4C
-  bash ./espn4cc_bootstrap.sh   # writes Docker files, builds, starts, verifies
+-----
 
-What the bootstrap sets up:
-- docker-compose.yml (service espn4cc, init: true, restart: unless-stopped)
-- Dockerfile (Python 3.11 slim)
-- docker-entrypoint.sh (starts cron + resolver)
-- update_schedule.sh (ingest → plan → xmltv/m3u; jitter; logrotate; health-gated)
-- espn4cc_verify.sh (health + content checks)
-- .env (LAN base URL, paths, schedule)
+## 📋 Prerequisites
 
-Important: The FastAPI app module is bin.vc_resolver:app
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- Network access to ESPN+ APIs
+- Channels DVR (optional, for full integration)
 
-Channels DVR setup:
-- M3U:  http://<LAN_IP>:8094/playlist.m3u
-- EPG:  http://<LAN_IP>:8094/epg.xml
+-----
 
-More details: see README_DOCKER.md
+## 🚀 Quick Start
 
-----------------------------------------------------------------
+### 1. Clone the Repository
 
-LEGACY SYSTEMD (STILL SUPPORTED)
-If you prefer systemd units and timers on the host, the original scripts and units continue to work. The Docker image mirrors the same behavior internally (resolver as a service + timer-like scheduler).
+```bash
+git clone https://github.com/kineticman/ESPN4CC4C.git
+cd ESPN4CC4C
+```
 
-----------------------------------------------------------------
+### 2. Configure Environment
 
-ARCHITECTURE (CONTAINER)
+Get your LAN IP address:
 
-ESPN Watch Graph API
-        ↓
-    ingest_* → SQLite (/app/data/eplus_vc.sqlite3)
-        ↓
-   build_plan (40 lanes, ~72h horizon)
-        ↓
-  xmltv_from_plan  → /app/out/epg.xml
-  m3u_from_plan    → /app/out/virtual_channels.m3u
-        ↓
-  FastAPI resolver (uvicorn) → /health /epg.xml /playlist.m3u /vc/<lane>
-                                ↑
-                             Channels DVR
+```bash
+# On Linux/Mac
+hostname -I | awk '{print $1}'
 
-----------------------------------------------------------------
+# Result example: 192.168.1.50
+```
 
-OPS CHEATSHEET
+Create your `.env` file:
 
-# start/stop
-docker compose up -d
-docker compose down
+```bash
+cp .env.example .env
+nano .env
+```
 
-# logs
-docker compose logs -f --tail=100
+**Critical:** Update `VC_RESOLVER_BASE_URL` with your actual LAN IP:
 
-# manual update cycle
-docker compose exec espn4cc /app/update_schedule.sh
+```bash
+VC_RESOLVER_BASE_URL=http://192.168.1.50:8094  # Replace with YOUR IP
+```
 
-# verify endpoints
-./espn4cc_verify.sh <LAN_IP> 8094
+### 3. Build and Run
 
-----------------------------------------------------------------
+```bash
+docker-compose build
+docker-compose up -d
+```
 
-TROUBLESHOOTING
+### 4. Verify It’s Working
 
-Port 8094 in use (old systemd units)?
-  sudo systemctl stop vc-resolver-v2.service vc-plan.timer || true
-  sudo systemctl disable vc-resolver-v2.service vc-plan.timer || true
-  sudo systemctl daemon-reload
-  docker compose up -d
+```bash
+# Check health
+curl http://YOUR_IP:8094/health
 
-M3U shows localhost/127.0.0.1?
-  Set VC_RESOLVER_BASE_URL=http://<LAN_IP>:8094 in .env, rebuild:
-  docker compose up -d --build
-  ./espn4cc_verify.sh <LAN_IP> 8094
+# View logs
+docker-compose logs -f
+```
 
-----------------------------------------------------------------
+You should see:
 
-NOTES & CONVENTIONS
-- All readiness checks use GET (no HEAD) by design.
-- Timezone is America/New_York inside the container.
-- Weekly VACUUM keeps SQLite lean.
-- Default planning horizon is ~72h.
+```
+INFO:     Uvicorn running on http://0.0.0.0:8094
+```
 
-----------------------------------------------------------------
+-----
 
-License
-MIT (see LICENSE)
+## 📺 Channels DVR Integration
+
+### Add as Source
+
+1. Open Channels DVR settings
+1. Go to **Sources** → **Add Source** → **M3U Playlist**
+1. Configure:
+- **M3U URL:** `http://YOUR_IP:8094/playlist.m3u`
+- **XMLTV URL:** `http://YOUR_IP:8094/epg.xml`
+1. Save and scan for channels
+
+### What You’ll Get
+
+- 40 channels (EPlus 1-40)
+- Channel numbers 20010-20049
+- Full EPG data (72 hours ahead)
+- Automatic stream selection
+
+-----
+
+## 🔧 Configuration
+
+### Environment Variables
+
+|Variable              |Default           |Description                 |
+|----------------------|------------------|----------------------------|
+|`VC_RESOLVER_BASE_URL`|*required*        |Your LAN IP (not 127.0.0.1!)|
+|`TZ`                  |`America/New_York`|Timezone for scheduling     |
+|`SCHEDULE_HOURS`      |`6`               |Update frequency (hours)    |
+|`VALID_HOURS`         |`72`              |Planning horizon (hours)    |
+|`LANES`               |`40`              |Number of virtual channels  |
+|`PORT`                |`8094`            |API server port             |
+
+### Advanced Configuration
+
+Edit `.env` to customize:
+
+```bash
+# Update every 4 hours instead of 6
+SCHEDULE_HOURS=4
+
+# Plan 4 days ahead instead of 3
+VALID_HOURS=96
+
+# Use 50 channels instead of 40
+LANES=50
+```
+
+Restart to apply changes:
+
+```bash
+docker-compose restart
+```
+
+-----
+
+## 📡 API Endpoints
+
+|Endpoint                 |Description    |Example            |
+|-------------------------|---------------|-------------------|
+|`GET /health`            |Health check   |`{"ok":true}`      |
+|`GET /epg.xml`           |XMLTV EPG data |Full XML document  |
+|`GET /playlist.m3u`      |M3U playlist   |Channel list       |
+|`GET /vc/{channel}`      |Stream redirect|`/vc/eplus01`      |
+|`GET /vc/{channel}/debug`|Debug info     |`/vc/eplus01/debug`|
+
+### Example Usage
+
+```bash
+# Get health status
+curl http://192.168.1.50:8094/health
+
+# Download EPG
+curl http://192.168.1.50:8094/epg.xml -o epg.xml
+
+# Test channel redirect
+curl -I http://192.168.1.50:8094/vc/eplus01
+
+# View channel debug info
+curl http://192.168.1.50:8094/vc/eplus01/debug | jq
+```
+
+-----
+
+## 🛠️ Management Commands
+
+### Container Operations
+
+```bash
+# Start container
+docker-compose up -d
+
+# Stop container
+docker-compose down
+
+# Restart container
+docker-compose restart
+
+# View logs (live)
+docker-compose logs -f
+
+# View logs (last 100 lines)
+docker-compose logs --tail=100
+
+# Check container status
+docker-compose ps
+
+# Access container shell
+docker-compose exec espn4cc bash
+```
+
+### Manual Operations
+
+```bash
+# Trigger immediate update
+docker-compose exec espn4cc /app/update_schedule.sh
+
+# View cron schedule
+docker-compose exec espn4cc crontab -l
+
+# Check database
+docker-compose exec espn4cc sqlite3 /app/data/eplus_vc.sqlite3 "SELECT COUNT(*) FROM events;"
+
+# View specific logs
+tail -f logs/schedule.log
+tail -f logs/ingest.log
+tail -f logs/plan.log
+```
+
+### Rebuilding
+
+After code changes:
+
+```bash
+# Rebuild and restart
+docker-compose up -d --build
+
+# Force clean rebuild
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+-----
+
+## 🔍 Troubleshooting
+
+### Container Won’t Start
+
+**Issue:** Port 8094 already in use
+
+```bash
+# Find what's using the port
+sudo lsof -i :8094
+
+# Stop conflicting service
+sudo systemctl stop vc-resolver-v2.service
+```
+
+**Issue:** Permission denied on volumes
+
+```bash
+# Fix permissions
+sudo chown -R $USER:$USER data/ out/ logs/
+```
+
+-----
+
+### No Channels Showing
+
+**Issue:** Wrong LAN IP in configuration
+
+```bash
+# Verify your IP
+hostname -I | awk '{print $1}'
+
+# Update .env
+nano .env
+# Change: VC_RESOLVER_BASE_URL=http://YOUR_CORRECT_IP:8094
+
+# Restart
+docker-compose restart
+```
+
+**Issue:** Database not initialized
+
+```bash
+# Check if database exists
+ls -lh data/
+
+# Manually initialize
+docker-compose exec espn4cc python3 bin/ingest_watch_graph_all_to_db.py \
+  --db /app/data/eplus_vc.sqlite3 --days 1 --tz America/New_York
+```
+
+-----
+
+### EPG Not Updating
+
+**Issue:** Cron not running
+
+```bash
+# Check cron status
+docker-compose exec espn4cc ps aux | grep cron
+
+# Check schedule log
+docker-compose exec espn4cc tail -f /app/logs/schedule.log
+
+# Manually trigger update
+docker-compose exec espn4cc /app/update_schedule.sh
+```
+
+**Issue:** Timezone problems
+
+```bash
+# Verify timezone
+docker-compose exec espn4cc date
+
+# Update .env
+TZ=America/Los_Angeles  # Use your timezone
+
+# Restart
+docker-compose restart
+```
+
+-----
+
+### Performance Issues
+
+**Issue:** Container using too much memory
+
+```bash
+# Check resource usage
+docker stats espn4cc
+
+# Reduce planning horizon
+nano .env
+# Change: VALID_HOURS=48
+
+# Restart
+docker-compose restart
+```
+
+**Issue:** Slow updates
+
+```bash
+# Reduce update frequency
+nano .env
+# Change: SCHEDULE_HOURS=12
+
+# Or reduce number of channels
+LANES=20
+
+# Restart
+docker-compose restart
+```
+
+-----
+
+### Debug Mode
+
+Enable detailed logging:
+
+```bash
+# View all logs in real-time
+docker-compose logs -f
+
+# Export logs to file
+docker-compose logs > debug.log
+
+# Check specific component
+docker-compose exec espn4cc cat /app/logs/ingest.log
+docker-compose exec espn4cc cat /app/logs/plan.log
+docker-compose exec espn4cc cat /app/logs/xmltv.log
+```
+
+-----
+
+## 📊 Monitoring
+
+### Health Checks
+
+Container includes built-in health monitoring:
+
+```bash
+# Docker health status
+docker-compose ps
+
+# Manual health check
+curl http://YOUR_IP:8094/health
+
+# Watch health status
+watch -n 5 'curl -s http://YOUR_IP:8094/health | jq'
+```
+
+### Log Monitoring
+
+Important logs to watch:
+
+```bash
+# Schedule execution
+tail -f logs/schedule.log
+
+# API requests
+docker-compose logs -f | grep INFO
+
+# Errors only
+docker-compose logs -f | grep ERROR
+```
+
+### Database Stats
+
+```bash
+# Event count
+docker-compose exec espn4cc sqlite3 /app/data/eplus_vc.sqlite3 \
+  "SELECT COUNT(*) as events FROM events;"
+
+# Channel count
+docker-compose exec espn4cc sqlite3 /app/data/eplus_vc.sqlite3 \
+  "SELECT COUNT(*) as channels FROM channel WHERE active=1;"
+
+# Latest plan
+docker-compose exec espn4cc sqlite3 /app/data/eplus_vc.sqlite3 \
+  "SELECT * FROM plan_run ORDER BY generated_at_utc DESC LIMIT 1;"
+```
+
+-----
+
+## 💾 Backup and Restore
+
+### Backup
+
+```bash
+# Backup database
+cp data/eplus_vc.sqlite3 backups/eplus_vc.$(date +%Y%m%d).sqlite3
+
+# Backup everything
+tar -czf espn4cc-backup-$(date +%Y%m%d).tar.gz data/ out/ .env
+
+# Automated backup script
+cat > backup.sh << 'EOF'
+#!/bin/bash
+BACKUP_DIR="./backups"
+mkdir -p "$BACKUP_DIR"
+DATE=$(date +%Y%m%d-%H%M%S)
+tar -czf "$BACKUP_DIR/backup-$DATE.tar.gz" data/ out/ .env
+find "$BACKUP_DIR" -mtime +30 -delete
+EOF
+chmod +x backup.sh
+```
+
+### Restore
+
+```bash
+# Stop container
+docker-compose down
+
+# Restore from backup
+tar -xzf espn4cc-backup-20251026.tar.gz
+
+# Start container
+docker-compose up -d
+```
+
+-----
+
+## 🔄 Updating
+
+### Update Application
+
+```bash
+# Pull latest code
+git pull origin main
+
+# Rebuild and restart
+docker-compose up -d --build
+```
+
+### Update Dependencies
+
+```bash
+# Edit requirements.txt
+nano requirements.txt
+
+# Rebuild with no cache
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+-----
+
+## 📁 Project Structure
+
+```
+ESPN4CC4C/
+├── bin/                      # Python scripts
+│   ├── vc_resolver.py       # FastAPI application
+│   ├── ingest_*.py          # ESPN API ingestion
+│   ├── build_plan.py        # Scheduling logic
+│   ├── xmltv_from_plan.py   # EPG generation
+│   └── m3u_from_plan.py     # Playlist generation
+├── data/                     # SQLite database (persistent)
+├── out/                      # Generated EPG/M3U (persistent)
+├── logs/                     # Application logs (persistent)
+├── Dockerfile               # Container definition
+├── docker-compose.yml       # Service orchestration
+├── docker-entrypoint.sh     # Startup script
+├── .env.example             # Configuration template
+└── requirements.txt         # Python dependencies
+```
+
+-----
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+1. Create a feature branch
+1. Make your changes
+1. Submit a pull request
+
+-----
+
+## 📝 License
+
+This project is licensed under the MIT License - see the <LICENSE> file for details.
+
+-----
+
+## 🙏 Acknowledgments
+
+- **Channels DVR** - For the amazing DVR platform
+- **ESPN+** - For the sports content
+- **FastAPI** - For the excellent web framework
+- **Docker** - For containerization made easy
+
+-----
+
+## 📞 Support
+
+- **Issues:** [GitHub Issues](https://github.com/kineticman/ESPN4CC4C/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/kineticman/ESPN4CC4C/discussions)
+- **Documentation:** [Wiki](https://github.com/kineticman/ESPN4CC4C/wiki)
+
+-----
+
+## 📈 Roadmap
+
+- [ ] Multi-architecture support (ARM/ARM64)
+- [ ] Prometheus metrics endpoint
+- [ ] Web UI for configuration
+- [ ] Notifications (email/webhook)
+- [ ] Kubernetes deployment manifests
+- [ ] Advanced scheduling algorithms
+
+-----
+
+## ⚠️ Disclaimer
+
+This project is not affiliated with, endorsed by, or connected to ESPN, Disney, or Channels DVR. Use at your own discretion and ensure compliance with applicable terms of service.
+
+-----
+
+<div align="center">
+
+**Made with ❤️ by the community**
+
+⭐ Star this repo if you find it useful!
+
+</div>
