@@ -15,7 +15,7 @@ def get_version() -> str:
         return os.getenv("ESPN4CC_VERSION", "v0.0.0+local")
 
 # convenience constant
-VERSION = get_version()
+VERSION = "2.2.4"
 
 if __name__ == "__main__":
     print(VERSION)

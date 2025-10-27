@@ -19,3 +19,10 @@ EXPOSE 8094
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=5 \
   CMD curl -fsS http://localhost:8094/health || exit 1
 ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Container healthcheck (FastAPI /health)
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD python -c "import urllib.request,sys;\
+u=urllib.request.urlopen(http://localhost:8094/health);\
+sys.exit(0 if u.getcode()==200 else 1)"
+

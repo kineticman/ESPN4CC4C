@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: |
+          if [ -f constraints.txt ]; then
+            pip install --upgrade pip
+            pip install -r requirements.txt -c constraints.txt
+          else
+            pip install --upgrade pip
+            pip install -r requirements.txt
+          fi
+
+      - name: Syntax check Python files
+        run: |
+          pyfiles="$(git ls-files '*.py' || true)"
+          [ -z "$pyfiles" ] || python -m py_compile $pyfiles
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
