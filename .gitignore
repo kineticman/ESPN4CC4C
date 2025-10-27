@@ -133,3 +133,4 @@ logs/
 # OS/editor
 .DS_Store
 *.swp
+constraints.txt
