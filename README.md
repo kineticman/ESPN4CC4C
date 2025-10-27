@@ -182,3 +182,6 @@ Output summary includes:
 
 ## License
 MIT (or your preferred license)
+
+## Docker Install
+See **README_DOCKER.md** for the single-container setup.
