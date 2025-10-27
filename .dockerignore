@@ -2,10 +2,9 @@
 .venv
 __pycache__/
 *.pyc
-data/
-out/
 logs/
+out/
+data/
 archive/
 backups/
-.env
-*.md~
+releases/

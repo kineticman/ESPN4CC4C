@@ -1,136 +1,36 @@
-# venv & Python junk
+# --- Python / venv ---
 .venv/
 __pycache__/
 *.pyc
 
-# runtime/output dirs
-logs/
-out/
-
-# sqlite side files (keep the main .sqlite3)
-data/*.sqlite3-shm
-data/*.sqlite3-wal
-
-# misc
-*.tmp
-*.swp
-.DS_Store
-data/*.sqlite3
-backups/
-releases/
-*.zip
-*.tar.gz
-data/*.sqlite3-*
-out/*
-!out/.gitkeep
-logs/*
-!logs/.gitkeep
-releases/*
-config.ini
-# runtime artifacts
-data/*.sqlite3
-logs/*.jsonl
-out/*
-__pycache__/
-*.pyc
-# venv & Python
-.venv/
-__pycache__/
-*.pyc
-
-# local config & secrets
-.env*
-*.sqlite3
-
-# generated outputs
-/out/
-/logs/
-
-# OS/editor junk
-.DS_Store
-*.swp
-# venv & Python
-.venv/
-__pycache__/
-*.pyc
-
-# local config & secrets
-.env*
-*.sqlite3
-
-# generated outputs
-/out/
-/logs/
-
-# OS/editor junk
-.DS_Store
-*.swp
-# local env & secrets
-.env.plan
-
-# Python cruft
-__pycache__/
-*.pyc
-
-# venv
-.venv/
-
-# generated data & outputs
-data/*.sqlite3
-out/*
-logs/*
-
-# editors
-*.swp
-*.bak*
-# local env
-.env.plan
-
-# python
-__pycache__/
-*.pyc
-
-# venv
-.venv/
-
-# generated data/outputs/logs
-data/*.sqlite3
-out/*
-logs/*
-
-# editor junk
-*.swp
-*.bak*
-
-# Docker
-.env
-
-# ESPN4CC Docker artifacts
-.env
-data/
-out/
-logs/
-
-# Runtime artifacts
-/data/
-/out/
-/logs/
-/archive/
-/backups/
-# Local env & runtime
+# --- Local env & secrets ---
 .env
 .env.*
+!.env.example
+
+# --- Generated data / runtime ---
 data/
 out/
 logs/
-.venv/
+archive/
+backups/
+releases/
 *.log
 *.log.*
-# Backups & scratch
-*.bak.*
-*.bad.*
-*.new
-# OS/editor
+
+# Keep directory placeholders if you want them versioned
+!data/.gitkeep
+!out/.gitkeep
+!logs/.gitkeep
+!archive/.gitkeep
+!backups/.gitkeep
+
+# --- Databases (don’t commit working SQLite DBs) ---
+*.sqlite3
+data/*.sqlite3*
+*.sqlite3-*
+
+# --- OS/editor junk ---
 .DS_Store
 *.swp
-constraints.txt
+*.bak*
