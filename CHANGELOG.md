@@ -1,5 +1,21 @@
 # ESPN Clean v2 — Changelog
 
+# CHANGELOG
+
+## [v2.2.2] - 2025-10-26
+### Added
+- Dockerized single-container deployment (resolver + cron scheduler).
+- Health-gated update routine with jitter and log rotation.
+- Weekly SQLite VACUUM.
+- `espn4cc_bootstrap.sh` and `espn4cc_verify.sh`.
+
+### Fixed
+- Clarified FastAPI module path: `bin.vc_resolver:app`.
+
+### Notes
+- Ensure `VC_RESOLVER_BASE_URL` uses LAN IP (not `localhost`) for Channels DVR.
+
+
 ## v2.0.1-night1 (2025-10-24)
 **Milestone:** Slate fallback, resolver hardening, stable M3U/XMLTV output
 
