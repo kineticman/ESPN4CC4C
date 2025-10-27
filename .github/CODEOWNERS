@@ -1,0 +1,7 @@
+# Everything in this repo is owned by Brad
+* @kineticman
+
+# (optional) extra ownership rules
+/bin/           @kineticman
+/tools/         @kineticman
+Dockerfile      @kineticman
