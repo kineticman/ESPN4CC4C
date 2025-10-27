@@ -80,7 +80,7 @@ If you use **Chrome Capture (cc4c)** to display streams, you can configure which
 Add the following to your `.env` file:
 
 ```bash
-CC_HOST=192.168.86.72
+CC_HOST=TYPE YOUR ACTUAL CC4C SERVER LAN IP HERE (IE 192.168.55.55)
 CC_PORT=5589
 ```
 
