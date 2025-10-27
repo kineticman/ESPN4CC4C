@@ -41,7 +41,7 @@ def _wrap_for_cc(vc_url: str, vc_base: str) -> str:
 
 
 # --- slate support ---
-SLATE_TMPL = os.getenv('VC_SLATE_URL_TEMPLATE', '/static/standby.html?lane={lane}')
+SLATE_TMPL = os.getenv('VC_SLATE_URL_TEMPLATE', '/slate?lane={lane}')
 def _slate_url(lane: str) -> str:
     tmpl = SLATE_TMPL
     try:
@@ -261,6 +261,15 @@ def debug_lane(lane: str, at: Optional[str] = None):
         return JSONResponse(info, status_code=500)
 
 
+@app.get("/standby")
+def standby(lane: Optional[str] = None):
+    """
+    Back-compat convenience: redirect /standby?lane=... to the configured slate URL.
+    Also catches any legacy links that referenced a static page.
+    """
+    q = f"{lane}" if lane else ""
+    return slate_redirect(q) or HTMLResponse("<h1>Stand By</h1>", status_code=200)
+
 @app.get("/slate")
 def slate_page():
     """Serve the standby page from static/slate.html."""
@@ -315,3 +324,6 @@ def playlist_cc_m3u(request: Request):
         return Response(content=body, media_type="audio/x-mpegurl")
     except Exception as e:
         return Response(f"# error: {e}\n", status_code=500, media_type="text/plain")
+@app.head("/slate")
+def slate_head():
+    return Response(status_code=200)
