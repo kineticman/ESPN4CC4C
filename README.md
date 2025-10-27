@@ -90,6 +90,56 @@ INFO:     Uvicorn running on http://0.0.0.0:8094
 ```
 
 -----
+-----
+
+## 🎮 Chrome Capture Integration
+
+If you use **Chrome Capture (cc4c)** to render ESPN+ streams in fullscreen,  
+you can control which host/port the M3U playlist uses by setting two variables in your `.env`.
+
+| Variable      | Default             | Description                                      |
+|----------------|--------------------|--------------------------------------------------|
+| `CC_HOST`      | *(auto-detected)*  | LAN IP or hostname where Chrome Capture runs.    |
+| `CC_PORT`      | `5589`             | Chrome Capture service port.                     |
+| `VC_RESOLVER_BASE_URL` | *(required)* | Base URL of this ESPN4CC4C resolver.            |
+
+These values drive the new **dynamic playlist** endpoint:
+```
+http://YOUR_IP:8094/playlist_cc.m3u
+```
+
+### Example
+
+If Chrome Capture runs on `192.168.86.72:5589` (default):
+```bash
+CC_HOST=192.168.86.72
+CC_PORT=5589
+```
+
+If it’s on another host or port:
+```bash
+CC_HOST=192.168.86.50
+CC_PORT=5599
+```
+
+Then rebuild:
+```bash
+docker compose up -d --build
+```
+
+You can verify the dynamic playlist with:
+```bash
+curl -s http://192.168.86.72:8094/playlist_cc.m3u | head -12
+```
+
+It should show:
+```
+chrome://192.168.86.50:5599/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2Feplus1
+```
+
+> 💡 The default static `/playlist.m3u` still works,  
+> but `/playlist_cc.m3u` will always reflect your `.env` settings.
+
 
 ## 📺 Channels DVR Integration
 
