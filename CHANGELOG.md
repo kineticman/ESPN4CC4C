@@ -63,3 +63,9 @@
 - Systemd: single pipeline timer (`vc-pipeline-v2.timer`) drives ingest→plan→publish; removed old `vc-plan` timer usage and bad flags.
 - Repo hygiene: ignore `out/`, `logs/`, `releases/`, `backups/`; moved artifacts to `releases//`; DB backups to `backups/`.
 2025-10-24  xmltv: enrich <desc> with summary/sport/title
+
+## v2.2.4 — 2025-10-27
+- fix: point slate template to `/slate?lane={lane}` (was `/static/standby.html`)
+- feat: add `/standby?lane=…` redirect to `/slate`
+- feat: HEAD handler for `/slate` to support `curl -I`
+- chore: repo hygiene (CODEOWNERS, LICENSE, CI/healthcheck)
