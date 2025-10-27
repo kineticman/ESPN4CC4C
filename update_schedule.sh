@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ESPN4CC4C refresh cycle: ingest -> plan -> xmltv -> m3u
 # - honors .env values
 # - rotates /app/logs/*.log (size-based, gzipped)
