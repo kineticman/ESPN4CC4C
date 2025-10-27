@@ -8,6 +8,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN if [ ! -s /tmp/requirements.txt ]; then \
       printf "fastapi\nuvicorn[standard]\npython-dotenv\n" > /tmp/requirements.txt; \
     fi && pip install --no-cache-dir -r /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY . .
 RUN mkdir -p /app/data /app/out /app/logs
 COPY docker-entrypoint.sh /docker-entrypoint.sh

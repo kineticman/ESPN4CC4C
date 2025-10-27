@@ -117,3 +117,19 @@ logs/
 /logs/
 /archive/
 /backups/
+# Local env & runtime
+.env
+.env.*
+data/
+out/
+logs/
+.venv/
+*.log
+*.log.*
+# Backups & scratch
+*.bak.*
+*.bad.*
+*.new
+# OS/editor
+.DS_Store
+*.swp

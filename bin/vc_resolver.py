@@ -6,6 +6,40 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, Redirect
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
 
+from urllib.parse import quote
+
+# --- ChromeCapture config ---
+CC_HOST = os.getenv("CC_HOST")          # defaults to resolver host if not set
+CC_PORT = os.getenv("CC_PORT", "5589")  # default 5589
+M3U_GROUP_TITLE = os.getenv("M3U_GROUP_TITLE", "ESPN+ VC")
+VC_RESOLVER_BASE_URL = os.getenv("VC_RESOLVER_BASE_URL")  # optional, preferred if set
+
+def _derive_host_from_base(vc_base: str) -> str:
+    # vc_base like "http://192.168.86.72:8094"
+    return vc_base.split("://", 1)[1].split("/", 1)[0].split(":")[0]
+
+def _vc_base_from_request(request: Request) -> str:
+    """
+    Prefer VC_RESOLVER_BASE_URL (LAN IP guardrail).
+    Fallback: request.base_url (handles reverse proxy/local testing).
+    """
+    if VC_RESOLVER_BASE_URL:
+        return VC_RESOLVER_BASE_URL.rstrip("/")
+    return str(request.base_url).rstrip("/")  # request.base_url has trailing slash
+
+def _cc_base(vc_base: str) -> str:
+    """
+    chrome://<host>:<port>/stream?url=
+    Host preference: CC_HOST (if set) else host from vc_base.
+    """
+    host = CC_HOST or _derive_host_from_base(vc_base)
+    return f"chrome://{host}:{CC_PORT}/stream?url="
+
+def _wrap_for_cc(vc_url: str, vc_base: str) -> str:
+    return _cc_base(vc_base) + quote(vc_url, safe="")
+# --- end ChromeCapture config ---
+
+
 # --- slate support ---
 SLATE_TMPL = os.getenv('VC_SLATE_URL_TEMPLATE', '/static/standby.html?lane={lane}')
 def _slate_url(lane: str) -> str:
@@ -251,3 +285,33 @@ def playlist_m3u():
         # Correct-ish MIME for M3U
         return FileResponse(path, media_type="audio/x-mpegurl", filename="virtual_channels.m3u")
     return Response("# not found\n", status_code=404, media_type="text/plain")
+
+@app.get("/playlist_cc.m3u")
+def playlist_cc_m3u(request: Request):
+    """
+    Dynamic M3U that respects CC_HOST/CC_PORT and VC_RESOLVER_BASE_URL.
+    Builds entries from the channel table (active=1).
+    """
+    try:
+        vc_base = _vc_base_from_request(request)
+        lines = ["#EXTM3U"]
+        with db() as conn:
+            rows = conn.execute(
+                "SELECT id AS channel_id, chno, name FROM channel WHERE active=1 ORDER BY chno"
+            ).fetchall()
+            for r in rows:
+                cid  = r["channel_id"]
+                chno = r["chno"]
+                name = r["name"] or cid
+                tvg_id   = cid
+                tvg_name = name
+                group    = M3U_GROUP_TITLE
+                vc_url   = f"{vc_base}/vc/{cid}"
+                line_url = _wrap_for_cc(vc_url, vc_base=vc_base)
+                lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{tvg_name}" tvg-chno="{chno}" group-title="{group}",{tvg_name}')
+                lines.append(line_url)
+
+        body = "\n".join(lines) + "\n"
+        return Response(content=body, media_type="audio/x-mpegurl")
+    except Exception as e:
+        return Response(f"# error: {e}\n", status_code=500, media_type="text/plain")

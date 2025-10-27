@@ -36,7 +36,8 @@ FEATURES   = CFG_WATCH_FEATURES
 REGION     = os.getenv('WATCH_API_REGION', CFG_WATCH_DEFAULT_REGION).upper()
 TZ_DEFAULT = os.getenv('WATCH_API_TZ', CFG_WATCH_DEFAULT_TZ)
 DEVICE_S   = os.getenv('WATCH_API_DEVICE', CFG_WATCH_DEFAULT_DEVICE).lower()
-VERIFY_SSL = os.getenv('WATCH_API_VERIFY_SSL', CFG_WATCH_VERIFY_SSL).strip().lower() not in ('0','false','no','off')
+VERIFY_SSL = str(os.getenv('WATCH_API_VERIFY_SSL', str(CFG_WATCH_VERIFY_SSL)))\
+    .strip().lower() not in ('0','false','no','off')
 
 if not VERIFY_SSL:
     try: urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
