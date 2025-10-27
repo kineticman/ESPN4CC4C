@@ -5,5 +5,7 @@ __pycache__/
 data/
 out/
 logs/
+archive/
+backups/
 .env
 *.md~

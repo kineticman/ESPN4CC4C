@@ -110,3 +110,10 @@ logs/*
 data/
 out/
 logs/
+
+# Runtime artifacts
+/data/
+/out/
+/logs/
+/archive/
+/backups/

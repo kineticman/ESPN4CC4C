@@ -97,3 +97,12 @@ diag:
 \t@. $(PROJECT_DIR)/.venv/bin/activate 2>/dev/null || true; \\
 \tVC_RESOLVER_ORIGIN=$(RESOLVER_ORIGIN) \\
 \tpython3 $(PROJECT_DIR)/tools/vc_diag.py --lane $(LANE) $(if $(QUIET),--quiet-errors,)
+# Docker targets start
+.PHONY: up down build verify logs cycle
+up:    ; docker compose up -d
+down:  ; docker compose down
+build: ; docker compose build
+verify:; ./espn4cc_verify.sh 192.168.86.72 8094
+logs:  ; docker compose logs -f --tail=100
+cycle: ; docker compose exec espn4cc /app/update_schedule.sh
+# Docker targets end
