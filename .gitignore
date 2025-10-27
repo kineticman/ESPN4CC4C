@@ -104,3 +104,9 @@ logs/*
 
 # Docker
 .env
+
+# ESPN4CC Docker artifacts
+.env
+data/
+out/
+logs/

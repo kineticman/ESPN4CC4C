@@ -1,20 +1,19 @@
-version: '3.8'
-
 services:
   espn4cc:
     build: .
     container_name: espn4cc
+    init: true
+    stop_grace_period: 15s
     ports:
-      - "8094:8094"
+      - "${PORT:-8094}:8094"
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-America/New_York}
     volumes:
       - ./data:/app/data
       - ./out:/app/out
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
-    env_file:
-      - .env
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
-
-networks:
-  espn4cc-net:
-    driver: bridge
