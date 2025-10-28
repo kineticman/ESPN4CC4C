@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Always run from repo root
+# --- always run from repo root ---
 SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Load host-side .env (for LAN, PORT, etc.)
+# --- load host-side .env (LAN, PORT, etc.) ---
 if [ -f ".env" ]; then
   set -a; . ./.env; set +a
 fi
 
-# Defaults
+# --- defaults ---
 PORT="${PORT:-8094}"
 TZ="${TZ:-America/New_York}"
 VALID_HOURS="${VALID_HOURS:-72}"
@@ -20,13 +20,17 @@ MIN_GAP_MINS="${MIN_GAP_MINS:-30}"
 VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
 LAN="${VC_RESOLVER_BASE_URL#http://}"; LAN="${LAN#https://}"
 
-# Host paths (NEVER use /app on host)
+# --- SANITIZE: never allow /app/* on the host ---
+if [[ "${DB:-}" == /app/* ]];   then echo "[FATAL] .env DB is a container path (${DB}). Use host-relative (e.g., ./data/eplus_vc.sqlite3)." >&2; exit 1; fi
+if [[ "${OUT:-}" == /app/* ]];  then echo "[FATAL] .env OUT is a container path (${OUT}). Use host-relative (e.g., ./out)." >&2; exit 1; fi
+if [[ "${LOGS:-}" == /app/* ]]; then echo "[FATAL] .env LOGS is a container path (${LOGS}). Use host-relative (e.g., ./logs)." >&2; exit 1; fi
+
+# --- host paths (container maps these into /app/*) ---
 if [ -z "${DB:-}" ]; then
   HOST_DB="$PWD/data/eplus_vc.sqlite3"
-elif [[ "$DB" == /app/* ]]; then
-  HOST_DB="$PWD${DB#/app}"
 else
-  HOST_DB="$DB"
+  # keep user-provided absolute/relative host paths
+  [[ "$DB" = /* ]] && HOST_DB="$DB" || HOST_DB="$PWD/$DB"
 fi
 HOST_OUT="${OUT:-$PWD/out}"
 HOST_LOGS="${LOGS:-$PWD/logs}"
@@ -67,7 +71,7 @@ docker compose exec -T espn4cc bash -lc '
 echo "== first run: generating plan + outputs via update_schedule.sh =="
 ./update_schedule.sh || true
 
-# Quick sanities (host-side HTTP GETs)
+# --- quick sanities (host-side HTTP GETs) ---
 curl -fsS "http://${LAN}/out/epg.xml" | wc -l || true
 curl -fsS "http://${LAN}/out/playlist.m3u" | wc -l || true
 curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<programme ' || true
