@@ -1,225 +1,203 @@
-# ESPN4CC4C - Docker Edition
+# ESPN4CC4C — Docker Edition
 
-## Overview
-
-**ESPN4CC4C (ESPN+ for Chrome Capture for Channels)** provides a fully containerized system that turns ESPN+ content into virtual live channels compatible with Channels DVR. The service runs as a single Docker container and exposes XMLTV and M3U endpoints for easy DVR integration.
+**ESPN4CC4C (ESPN+ Virtual Channels for Channels DVR)** provides a containerized resolver that turns ESPN+ events into a stable set of virtual channels. It exposes **XMLTV** and **M3U** endpoints that Channels DVR can ingest.
 
 ---
 
 ## Features
-
-- 40 automatically managed virtual channels
-- Full XMLTV guide (EPG) generation
-- Integrated scheduling and auto-updates
-- Persistent SQLite database for stored events and metadata
-- Dynamic M3U playlist generation for Chrome Capture
-- Health monitoring and cron-based auto-refresh
-- Simple Docker deployment
+- 40 managed virtual channels (default)
+- XMLTV EPG generation + M3U playlist
+- Idempotent DB migration on refresh
+- Health endpoint + sanity checks
+- Simple Docker Compose deployment
+- Persistent data/logs/out directories (bind mounts)
 
 ---
 
 ## Prerequisites
-
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- Network access to ESPN+ APIs
-- Channels DVR (optional but recommended)
+- Docker Engine 20.10+  
+- Docker Compose v2  
+- A LAN-reachable host IP (for Channels to reach the container)  
+- (Optional) Channels DVR to consume the M3U + XMLTV
 
 ---
 
 ## Quick Start
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/kineticman/ESPN4CC4C.git
-cd ESPN4CC4C
-```
-
-### 2. Configure Environment
-
-Find your LAN IP:
-
-```bash
-hostname -I | awk '{print $1}'
-```
-
-Copy the example environment file and edit:
-
+### 1) Configure environment
 ```bash
 cp .env.example .env
-nano .env
+# Edit .env and set your LAN IP and desired port (default 8094).
+# Example:
+# VC_RESOLVER_BASE_URL=http://192.168.86.72:8094
+# TZ=America/New_York
 ```
 
-Example:
-
-```bash
-VC_RESOLVER_BASE_URL=http://192.168.1.50:8094
+Key lines in `.env`:
+```ini
+PORT=8094
 TZ=America/New_York
+VC_RESOLVER_BASE_URL=http://YOUR_LAN_IP:8094
+M3U_GROUP_TITLE='ESPN+ VC'  # keep quotes
 ```
 
-### 3. Build and Start
+> `OUT` is a **directory** (`/app/out`); the stack writes `epg.xml` and `playlist.m3u` inside it.
 
+### 2) Bring it up (recommended)
+```bash
+./bootstrap.sh
+```
+- Builds + starts the container
+- Waits for **/health** (with a default boot delay), then prints:
+  - XMLTV bytes, M3U bytes
+  - First `<channel id>` from XML
+  - First `tvg-id` from M3U  
+- Shows the exact URLs to paste into Channels DVR
+
+You can tune the initial wait without editing files:
+```bash
+BOOT_DELAY=25 ./bootstrap.sh
+```
+
+(Manual alternative)
 ```bash
 docker compose build
 docker compose up -d
+curl -fsS http://<LAN-IP>:8094/health | jq .
 ```
 
-Check that the container is running:
+### 3) Add to Channels DVR
+Use the LAN IP and port from `.env`:
 
-```bash
-curl http://192.168.1.50:8094/health
+- **M3U**:   `http://<LAN-IP>:<PORT>/playlist.m3u`  
+- **XMLTV**: `http://<LAN-IP>:<PORT>/out/epg.xml`
+
+Example:
 ```
-
----
-
-## Chrome Capture Integration
-
-If you use **Chrome Capture (cc4c)** to display streams, you can configure which host and port the generated M3U uses.
-
-Add the following to your `.env` file:
-
-```bash
-CC_HOST=TYPE YOUR ACTUAL CC4C SERVER LAN IP HERE (IE 192.168.55.55)
-CC_PORT=5589
-```
-
-If your Chrome Capture runs on another port (for example 5599):
-
-```bash
-CC_PORT=5599
-```
-
-Then rebuild and restart:
-
-```bash
-docker compose up -d --build
-```
-
-The system will automatically generate a dynamic playlist:
-
-```
-http://YOUR_IP:8094/playlist_cc.m3u
-```
-
-Example entry:
-
-```
-chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2Feplus1
-```
-
-> `/playlist_cc.m3u` respects your `.env` settings for Chrome Capture.
-> `/playlist.m3u` remains available as the static version.
-
----
-
-## Channels DVR Integration
-
-### Add as a Source
-
-1. Open Channels DVR settings  
-2. Navigate to **Sources → Add Source → M3U Playlist**  
-3. Enter:  
-   - **M3U URL:** `http://YOUR_IP:8094/playlist_cc.m3u`  
-   - **XMLTV URL:** `http://YOUR_IP:8094/epg.xml`  
-4. Save and scan channels
-
-Expected results:
-- 40 ESPN+ virtual channels (EPlus 1–40)
-- Channel numbers 20010–20049
-- Full 72-hour guide data
-
----
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|-----------|----------|-------------|
-| `VC_RESOLVER_BASE_URL` | *(required)* | Base resolver URL, usually `http://LAN_IP:8094` |
-| `CC_HOST` | Auto-detected | Chrome Capture host |
-| `CC_PORT` | 5589 | Chrome Capture port |
-| `TZ` | America/New_York | Timezone for scheduling |
-| `SCHEDULE_HOURS` | 6 | Update frequency (hours) |
-| `VALID_HOURS` | 72 | Planning window (hours) |
-| `LANES` | 40 | Number of virtual channels |
-| `PORT` | 8094 | FastAPI port |
-
-Restart to apply changes:
-
-```bash
-docker compose restart
+http://192.168.86.72:8094/playlist.m3u
+http://192.168.86.72:8094/out/epg.xml
 ```
 
 ---
 
-## API Endpoints
+## Update / Refresh Cycle
 
-| Endpoint | Description |
-|-----------|-------------|
-| `/health` | Health status JSON |
-| `/epg.xml` | XMLTV guide data |
-| `/playlist.m3u` | Static M3U playlist |
-| `/playlist_cc.m3u` | Chrome Capture dynamic M3U |
-| `/vc/{channel}` | Redirect to current event |
-| `/vc/{channel}/debug` | Detailed debug info |
+The refresh script runs DB migrate → Plan → Emit XML/M3U → Sanity checks.
+
+```bash
+./update_schedule.sh
+```
+
+Options:
+- `PRE_WAIT=5 ./update_schedule.sh`  (give resolver a few seconds to warm up)
+- All checks use **GET** (no HEAD). No proxies are used for ESPN endpoints.
+
+---
+
+## Environment Variables (excerpt)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PORT` | `8094` | Port published by Docker Compose and used when `VC_RESOLVER_BASE_URL` is unset. |
+| `TZ` | `America/New_York` | Container timezone. |
+| `DB` | `/app/data/eplus_vc.sqlite3` | SQLite DB path (inside container). |
+| `OUT` | `/app/out` | Output dir (container). `epg.xml` and `playlist.m3u` live here. |
+| `LOGS` | `/app/logs` | Logs dir (container). |
+| `VC_M3U_PATH` | `/app/out/virtual_channels.m3u` | Optional/legacy target; safe to ignore. |
+| `VALID_HOURS` | `72` | Planning window (hours). |
+| `LANES` | `40` | Number of virtual channels. |
+| `ALIGN` | `30` | Align start times to minute grid. |
+| `MIN_GAP_MINS` | `30` | Minimum gap between slots. |
+| `VC_RESOLVER_BASE_URL` | *(required)* | Must be reachable by Channels DVR (e.g., `http://192.168.x.x:8094`). |
+| `CC_HOST` | `YOUR_LAN_IP` | Optional, for Chrome Capture flavored outputs later. |
+| `CC_PORT` | `5589` | Optional, Chrome Capture port. |
+| `M3U_GROUP_TITLE` | `'ESPN+ VC'` | Keep **quotes**, contains a space. |
+
+---
+
+## Endpoints
+
+| Path | Purpose |
+|---|---|
+| `/health` | JSON health check |
+| `/out/epg.xml` | XMLTV guide |
+| `/playlist.m3u` | M3U playlist |
+| `/vc/{lane}` | Resolver redirect to current event in a lane |
+| `/vc/{lane}/debug` | Debug info for a lane |
 
 ---
 
 ## Common Commands
 
 ```bash
-# Start container
+# Start / stop
 docker compose up -d
-
-# Stop container
 docker compose down
 
-# Logs
+# Rebuild image
+docker compose build --no-cache
+docker compose up -d
+
+# Follow logs
 docker compose logs -f
 
-# Rebuild
-docker compose up -d --build
-
-# Database check
+# DB peek
 docker compose exec espn4cc sqlite3 /app/data/eplus_vc.sqlite3 "SELECT COUNT(*) FROM events;"
+```
+
+---
+
+## Backup & Restore
+
+**Backup (brief downtime, safe):**
+```bash
+./backup.sh                # saves a timestamped tar.gz to ~/archive/backups
+```
+
+**Restore (outline):**
+```bash
+tar -xzf ~/archive/backups/ESPN4CC4C_<TS>.tar.gz -C ~/restore
+cd ~/restore/ESPN4CC4C && docker compose up -d
 ```
 
 ---
 
 ## Troubleshooting
 
-**Port in use:**  
-If port 8094 is occupied:
-
+**Container name conflict (`espn4cc`):**
 ```bash
-sudo lsof -i :8094
-sudo systemctl stop vc-resolver-v2.service
+docker compose down --remove-orphans
+docker rm -f espn4cc 2>/dev/null || true
+docker network rm espn4cc4c_default 2>/dev/null || true
+docker compose up -d
 ```
 
-**Wrong LAN IP:**  
-Ensure `.env` has your correct address:
-
+**Health fails on first try (slow boot):**
 ```bash
-VC_RESOLVER_BASE_URL=http://192.168.1.50:8094
-docker compose restart
+BOOT_DELAY=25 ./bootstrap.sh
 ```
 
-**No EPG updates:**  
-Check logs:
-
-```bash
-docker compose exec espn4cc tail -f /app/logs/schedule.log
-```
+**Wrong LAN IP / Port:**
+- Fix in `.env`:
+  ```
+  VC_RESOLVER_BASE_URL=http://192.168.86.72:8094
+  PORT=8094
+  ```
+- Re-run:
+  ```
+  ./bootstrap.sh
+  ```
 
 ---
 
-## Project Information
+## Notes
+
+- Channel IDs are **numeric** right now (stable). We can add an env toggle for `eplusXX` later.
+- All sanity checks use **GET** only.  
+- No proxies are used for ESPN endpoints.
+
+---
 
 **License:** MIT  
 **Maintainer:** kineticman  
-**Repository:** [github.com/kineticman/ESPN4CC4C](https://github.com/kineticman/ESPN4CC4C)
-
-This project is not affiliated with or endorsed by ESPN, Disney, or Channels DVR.
-
+**This project is not affiliated with or endorsed by ESPN, Disney, or Channels DVR.
