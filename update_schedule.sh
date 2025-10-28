@@ -1,41 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Always run from repo root
+# --- always run from repo root ---
 SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Load .env if present
+# --- load .env if present (host-side) ---
 if [ -f ".env" ]; then
   set -a; . ./.env; set +a
 fi
 
-# Host-side defaults
+# --- defaults (host-side) ---
 PORT="${PORT:-8094}"
 TZ="${TZ:-America/New_York}"
-
-# Resolve host-side paths (never use /app on host)
-if [ -z "${DB:-}" ]; then
-  HOST_DB="$PWD/data/eplus_vc.sqlite3"
-elif [[ "${DB}" == /app/* ]]; then
-  HOST_DB="$PWD${DB#/app}"
-else
-  HOST_DB="$DB"
-fi
-HOST_OUT="${OUT:-$PWD/out}"
-HOST_LOGS="${LOGS:-$PWD/logs}"
-mkdir -p "$(dirname "$HOST_DB")" "$HOST_OUT" "$HOST_LOGS"
-
-# Planner tunables
 VALID_HOURS="${VALID_HOURS:-72}"
 LANES="${LANES:-40}"
 ALIGN="${ALIGN:-30}"
 MIN_GAP_MINS="${MIN_GAP_MINS:-30}"
-
-# Resolver LAN base for HTTP sanity checks
 VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
-LAN="${VC_RESOLVER_BASE_URL#http://}"
-LAN="${LAN#https://}"
+LAN="${VC_RESOLVER_BASE_URL#http://}"; LAN="${LAN#https://}"
+
+# --- SANITIZE: never allow /app/* on the host ---
+if [[ "${DB:-}" == /app/* ]];   then echo "[FATAL] .env DB is a container path (${DB}). Use host-relative (e.g., ./data/eplus_vc.sqlite3)." >&2; exit 1; fi
+if [[ "${OUT:-}" == /app/* ]];  then echo "[FATAL] .env OUT is a container path (${OUT}). Use host-relative (e.g., ./out)." >&2; exit 1; fi
+if [[ "${LOGS:-}" == /app/* ]]; then echo "[FATAL] .env LOGS is a container path (${LOGS}). Use host-relative (e.g., ./logs)." >&2; exit 1; fi
+
+# --- resolve host paths (container bind-mounts map these into /app/*) ---
+if [ -z "${DB:-}" ]; then
+  HOST_DB="$PWD/data/eplus_vc.sqlite3"
+else
+  [[ "$DB" = /* ]] && HOST_DB="$DB" || HOST_DB="$PWD/$DB"
+fi
+HOST_OUT="${OUT:-$PWD/out}"
+HOST_LOGS="${LOGS:-$PWD/logs}"
+mkdir -p "$(dirname "$HOST_DB")" "$HOST_OUT" "$HOST_LOGS"
 
 ts() { date +'%Y-%m-%d %H:%M:%S'; }
 
@@ -51,7 +49,7 @@ for i in {1..30}; do
   sleep 1
 done
 
-# Ensure the DB exists and migrate INSIDE the container (all /app paths only here)
+# --- ensure DB exists + migrate (INSIDE container, safe to use /app/*) ---
 echo "[${TZ} $(ts)] Ensure DB exists + migrate (inside container)..."
 docker compose exec -T espn4cc bash -lc '
   set -e
@@ -66,7 +64,7 @@ docker compose exec -T espn4cc bash -lc '
   fi
 '
 
-# Ingest if empty (inside container)
+# --- ingest if empty (INSIDE container) ---
 echo "[${TZ} $(ts)] Ingest if empty..."
 docker compose exec -T espn4cc bash -lc '
   set -e
@@ -78,7 +76,7 @@ docker compose exec -T espn4cc bash -lc '
   fi
 '
 
-# Build plan (inside container)
+# --- build plan (INSIDE container) ---
 echo "[${TZ} $(ts)] Building plan -> bin/build_plan.py ..."
 docker compose exec -T espn4cc bash -lc '
   set -e
@@ -97,7 +95,7 @@ docker compose exec -T espn4cc bash -lc '
     --tz "$TZ"
 '
 
-# Emit XMLTV + M3U (inside container)
+# --- emit XMLTV + M3U (INSIDE container) ---
 echo "[${TZ} $(ts)] Writing XMLTV -> $HOST_OUT/epg.xml ..."
 docker compose exec -T espn4cc bash -lc '
   set -e
@@ -118,7 +116,7 @@ docker compose exec -T espn4cc bash -lc '
     --cc-port "$CC_PORT"
 '
 
-# Sanity HTTP checks (host)
+# --- sanity HTTP checks (host) ---
 echo "[${TZ} $(ts)] Sanity: checking health again..."
 curl -fsS "${VC_RESOLVER_BASE_URL}/health" -o "${HOST_LOGS}/health_last.json" || true
 
@@ -128,5 +126,5 @@ curl -fsS "http://${LAN}/out/epg.xml" | wc -c || true
 echo "[${TZ} $(ts)] Sanity: measuring M3U bytes @ ${VC_RESOLVER_BASE_URL}/out/playlist.m3u ..."
 curl -fsS "http://${LAN}/out/playlist.m3u" | wc -c || true
 
-# Provenance
+# --- provenance ---
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
