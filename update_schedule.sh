@@ -57,6 +57,8 @@ if [[ "$ok" != "1" ]]; then
   exit 1
 fi
 echo "$(ts) Resolver is healthy."
+[${TZ:-$(date +%F\ %T)}] Ingesting ~72h ESPN+ airings -> ${DB:-$PWD/data/eplus_vc.sqlite3} ...
+python3 bin/ingest_watch_graph_all_to_db.py --db "${DB:-$PWD/data/eplus_vc.sqlite3}" --days "${VALID_HOURS:-72}" --tz "${TZ:-America/New_York}"
 
 # ------------ migrate ------------
 if [[ -x "bin/db_migrate.py" ]]; then
