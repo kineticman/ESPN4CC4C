@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
-# ESPN4CC4C refresh cycle: ingest -> plan -> xmltv -> m3u
+set -Eeuo pipefail
+# ESPN4CC4C refresh cycle: ingest -> migrate -> plan -> xmltv -> m3u
 # - honors .env values
 # - rotates /app/logs/*.log (size-based, gzipped)
 # - optional rewrite of static M3U with CC_HOST/CC_PORT
 
-set -Eeuo pipefail
-
 # -----------------------------
-# config (from .env where set)
+# config (from env / docker)
 # -----------------------------
 export TZ="${TZ:-America/New_York}"
 
@@ -24,7 +22,7 @@ M3U_GROUP_TITLE="${M3U_GROUP_TITLE:-ESPN+ VC}"
 LOG_DIR="/app/logs"
 mkdir -p "$LOG_DIR"
 
-# rotation tunables (can be overridden in .env)
+# rotation tunables (override via env if desired)
 LOG_MAX_SIZE_MB="${LOG_MAX_SIZE_MB:-5}"   # rotate at ~5 MB
 LOG_KEEP="${LOG_KEEP:-7}"                 # keep 7 gz archives
 LOG_MAX_BYTES=$(( LOG_MAX_SIZE_MB * 1024 * 1024 ))
@@ -42,16 +40,13 @@ rotate_logs() {
     [[ -f "$f" ]] || continue
     sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
     if (( sz >= LOG_MAX_BYTES )); then
-      # shift older gz files N..2 -> N+1..3
       for i in $(seq "$LOG_KEEP" -1 2); do
         [[ -f "$f.$((i-1)).gz" ]] && mv -f "$f.$((i-1)).gz" "$f.$i.gz"
       done
-      # roll current to .1 and gzip it
       cp -f "$f" "$f.1" && : > "$f"
       gzip -f "$f.1"
     fi
   done
-  # prune gz archives older than 30 days
   find "$LOG_DIR" -type f -name '*.gz' -mtime +30 -delete || true
   shopt -u nullglob
 }
@@ -73,7 +68,6 @@ rewrite_static_m3u_for_cc() {
   if [[ -z "$host" ]]; then
     host="$(derive_host_from_base "$BASE_URL")"
   fi
-  # in-place replace: chrome://<anything>:<port>/
   sed -Ei "s#chrome://[^:/]+:[0-9]{2,5}/#chrome://${host}:${CC_PORT}/#g" "$file" || true
 }
 
@@ -105,6 +99,21 @@ if [[ -f "/app/bin/ingest_watch_graph_all_to_db.py" ]]; then
     >> "$LOG_DIR/ingest.log" 2>&1 || log "Ingest failed"
 fi
 
+# DB migrate (idempotent; runs if present in either location)
+if [[ -f "/app/tools/db_migrate.py" ]]; then
+  log "DB migrate…"
+  python3 /app/tools/db_migrate.py \
+    --db "$DB" --lanes "${LANES:-40}" \
+    >> "$LOG_DIR/migrate.log" 2>&1 || log "DB migrate failed"
+elif [[ -f "/app/bin/db_migrate.py" ]]; then
+  log "DB migrate…"
+  python3 /app/bin/db_migrate.py \
+    --db "$DB" --lanes "${LANES:-40}" \
+    >> "$LOG_DIR/migrate.log" 2>&1 || log "DB migrate failed"
+else
+  log "DB migrate… (skipped – no db_migrate.py)"
+fi
+
 if [[ -f "/app/bin/build_plan.py" ]]; then
   log "Plan…"
   python3 /app/bin/build_plan.py \
@@ -126,7 +135,6 @@ if [[ -f "/app/bin/m3u_from_plan.py" ]]; then
   python3 /app/bin/m3u_from_plan.py \
     --db "$DB" --out "$M3U_OUT" \
     >> "$LOG_DIR/m3u.log" 2>&1 || log "M3U failed"
-  # ensure static file reflects CC_HOST/CC_PORT
   rewrite_static_m3u_for_cc "$M3U_OUT"
 fi
 
