@@ -72,10 +72,25 @@ echo "== first run: generating plan + outputs via update_schedule.sh =="
 ./update_schedule.sh || true
 
 # --- Sanity summary (host-side HTTP GETs) ---
+TOTAL=$(curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<programme ' || echo 0)
+STBY=$(curl  -fsS "http://${LAN}/out/epg.xml" | grep -c '<title>Stand By</title>' || echo 0)
+REAL=$(( TOTAL - STBY ))
+
 echo "== sanity summary =="
-TOTAL=$(curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<programme ' || true)
-REAL=$(curl  -fsS "http://${LAN}/out/epg.xml" | grep -vc '<title>Stand By</title>' || true)
-echo "host=$(hostname)  programmes=${TOTAL:-0}  real=${REAL:-0}"
+echo "host=$(hostname)  programmes=${TOTAL}  placeholders=${STBY}  real=${REAL}"
+
+echo "== first non-placeholder title =="
+curl -fsS "http://${LAN}/out/epg.xml" \
+| awk '
+  /<programme / { inside=1; title=""; next }
+  inside && /<title>/ {
+    t=$0; gsub(/.*<title>|<\/title>.*/,"",t); title=t;
+  }
+  /<\/programme>/ {
+    if (inside && title != "" && title != "Stand By") { print title; exit }
+    inside=0
+  }
+' || true
 
 # Provenance
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
