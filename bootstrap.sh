@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- always run from repo root ---
+# --- Always run from repo root ---
 SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# --- load host-side .env (LAN, PORT, etc.) ---
+# --- Load host-side .env (LAN, PORT, etc.) ---
 if [ -f ".env" ]; then
   set -a; . ./.env; set +a
 fi
 
-# --- defaults ---
+# --- Defaults ---
 PORT="${PORT:-8094}"
 TZ="${TZ:-America/New_York}"
 VALID_HOURS="${VALID_HOURS:-72}"
@@ -20,20 +20,20 @@ MIN_GAP_MINS="${MIN_GAP_MINS:-30}"
 VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
 LAN="${VC_RESOLVER_BASE_URL#http://}"; LAN="${LAN#https://}"
 
-# --- SANITIZE: never allow /app/* on the host ---
-if [[ "${DB:-}" == /app/* ]];   then echo "[FATAL] .env DB is a container path (${DB}). Use host-relative (e.g., ./data/eplus_vc.sqlite3)." >&2; exit 1; fi
-if [[ "${OUT:-}" == /app/* ]];  then echo "[FATAL] .env OUT is a container path (${OUT}). Use host-relative (e.g., ./out)." >&2; exit 1; fi
-if [[ "${LOGS:-}" == /app/* ]]; then echo "[FATAL] .env LOGS is a container path (${LOGS}). Use host-relative (e.g., ./logs)." >&2; exit 1; fi
+# --- Host path mapping (NEVER use /app on host) ---
+# Hard-fail if environment tries to force container paths on host.
+if [[ "${DB:-}" =~ ^/app/ ]];  then echo "[FATAL] .env DB is a container path (${DB}). Use host-relative (e.g., ./data/eplus_vc.sqlite3)." >&2; exit 1; fi
+if [[ "${OUT:-}" =~ ^/app/ ]]; then echo "[FATAL] .env OUT is a container path (${OUT}). Use host-relative (e.g., ./out)." >&2; exit 1; fi
+if [[ "${LOGS:-}" =~ ^/app/ ]]; then echo "[FATAL] .env LOGS is a container path (${LOGS}). Use host-relative (e.g., ./logs)." >&2; exit 1; fi
 
-# --- host paths (container maps these into /app/*) ---
-if [ -z "${DB:-}" ]; then
-  HOST_DB="$PWD/data/eplus_vc.sqlite3"
-else
-  # keep user-provided absolute/relative host paths
-  [[ "$DB" = /* ]] && HOST_DB="$DB" || HOST_DB="$PWD/$DB"
-fi
+# Resolve host-side paths (mkdir only on host paths)
+HOST_DB="${DB:-$PWD/data/eplus_vc.sqlite3}"
+[[ "$HOST_DB" = /* ]] || HOST_DB="$PWD/${HOST_DB#./}"
 HOST_OUT="${OUT:-$PWD/out}"
+[[ "$HOST_OUT" = /* ]] || HOST_OUT="$PWD/${HOST_OUT#./}"
 HOST_LOGS="${LOGS:-$PWD/logs}"
+[[ "$HOST_LOGS" = /* ]] || HOST_LOGS="$PWD/${HOST_LOGS#./}"
+
 mkdir -p "$(dirname "$HOST_DB")" "$HOST_OUT" "$HOST_LOGS"
 
 echo "== docker compose: build =="
@@ -71,7 +71,11 @@ docker compose exec -T espn4cc bash -lc '
 echo "== first run: generating plan + outputs via update_schedule.sh =="
 ./update_schedule.sh || true
 
-# --- quick sanities (host-side HTTP GETs) ---
-curl -fsS "http://${LAN}/out/epg.xml" | wc -l || true
-curl -fsS "http://${LAN}/out/playlist.m3u" | wc -l || true
-curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<programme ' || true
+# --- Sanity summary (host-side HTTP GETs) ---
+echo "== sanity summary =="
+TOTAL=$(curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<programme ' || true)
+REAL=$(curl  -fsS "http://${LAN}/out/epg.xml" | grep -vc '<title>Stand By</title>' || true)
+echo "host=$(hostname)  programmes=${TOTAL:-0}  real=${REAL:-0}"
+
+# Provenance
+echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
