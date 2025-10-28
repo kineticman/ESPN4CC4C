@@ -126,5 +126,25 @@ curl -fsS "http://${LAN}/out/epg.xml" | wc -c || true
 echo "[${TZ} $(ts)] Sanity: measuring M3U bytes @ ${VC_RESOLVER_BASE_URL}/out/playlist.m3u ..."
 curl -fsS "http://${LAN}/out/playlist.m3u" | wc -c || true
 
+# --- final sanity summary + first real title (host HTTP) ---
+TOTAL=$(curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<programme ' || echo 0)
+STBY=$(curl -fsS "http://${LAN}/out/epg.xml" | grep -c '<title>Stand By</title>' || echo 0)
+REAL=$(( TOTAL - STBY ))
+echo "== sanity summary =="
+echo "host=$(hostname)  programmes=${TOTAL}  placeholders=${STBY}  real=${REAL}"
+
+echo "== first non-placeholder title =="
+curl -fsS "http://${LAN}/out/epg.xml" \
+| awk '
+  /<programme / { inside=1; title=""; next }
+  inside && /<title>/ {
+    t=$0; gsub(/.*<title>|<\/title>.*/,"",t); title=t;
+  }
+  /<\/programme>/ {
+    if (inside && title != "" && title != "Stand By") { print title; exit }
+    inside=0
+  }
+' || true
+
 # --- provenance ---
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
