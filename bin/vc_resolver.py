@@ -327,3 +327,21 @@ def playlist_cc_m3u(request: Request):
 @app.head("/slate")
 def slate_head():
     return Response(status_code=200)
+
+# --- compact compatibility route for /playlist.m3u ---
+from fastapi import APIRouter, Response
+from fastapi.responses import FileResponse, RedirectResponse
+import os
+
+router = APIRouter()
+
+@router.get("/playlist.m3u")
+def playlist_root():
+  # Serve the file from /out, or redirect if mounted as static
+  out_path = os.environ.get("OUT", "/app/out")
+  p = os.path.join(out_path, "playlist.m3u")
+  if os.path.exists(p):
+      return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
+  return RedirectResponse(url="/out/playlist.m3u", status_code=307)
+
+app.include_router(router)
