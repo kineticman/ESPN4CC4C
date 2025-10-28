@@ -21,7 +21,6 @@ VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
 LAN="${VC_RESOLVER_BASE_URL#http://}"; LAN="${LAN#https://}"
 
 # --- Host path mapping (NEVER use /app on host) ---
-# Hard-fail if environment tries to force container paths on host.
 if [[ "${DB:-}" =~ ^/app/ ]];  then echo "[FATAL] .env DB is a container path (${DB}). Use host-relative (e.g., ./data/eplus_vc.sqlite3)." >&2; exit 1; fi
 if [[ "${OUT:-}" =~ ^/app/ ]]; then echo "[FATAL] .env OUT is a container path (${OUT}). Use host-relative (e.g., ./out)." >&2; exit 1; fi
 if [[ "${LOGS:-}" =~ ^/app/ ]]; then echo "[FATAL] .env LOGS is a container path (${LOGS}). Use host-relative (e.g., ./logs)." >&2; exit 1; fi
