@@ -8,3 +8,15 @@ data/
 archive/
 backups/
 releases/
+
+# state/artifacts
+.env
+.env.backup.*
+data/
+out/
+__pycache__/
+*.pyc
+*.log
+*.gz
+*.tar
+*.zip
