@@ -69,7 +69,7 @@ fi
 echo "Resolver healthy."
 
 # --- first-run assist: generate outputs if missing/404 ---
-if ! curl -fsS "$EPG_URL" >/dev/null 2>&1 || ! curl -fsS "$M3U_URL" >/devnull 2>&1; then
+if ! curl -fsS "$EPG_URL" >/dev/null 2>&1 || ! curl -fsS "$M3U_URL" >/dev/null 2>&1; then
   echo "== first run: generating plan + outputs via update_schedule.sh =="
   PRE_WAIT=5 ./update_schedule.sh
 fi

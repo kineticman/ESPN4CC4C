@@ -14,6 +14,9 @@ fi
 # Derive base URL
 PORT="${PORT:-8094}"
 BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
+if [[ "$BASE_URL" != http://* && "$BASE_URL" != https://* ]]; then
+  BASE_URL="http://$BASE_URL"
+fi
 export VC_RESOLVER_ORIGIN="${VC_RESOLVER_ORIGIN:-$BASE_URL}"
 
 # Project root (host)
@@ -70,7 +73,7 @@ if ! readiness_wait "$HEALTH_URL" 120 1; then
 fi
 log "Resolver is healthy."
 
-# DB migrate (host DB path)
+# DB migrate (ok if missing)
 if [[ -x "bin/db_migrate.py" ]]; then
   log "Running DB migration -> bin/db_migrate.py --db \"$DB_HOST\" ..."
   python3 bin/db_migrate.py --db "$DB_HOST"
@@ -78,25 +81,32 @@ else
   log "WARN: bin/db_migrate.py not found; skipping migrate."
 fi
 
-# Build plan
+# Build plan (pass --db and tunables if present)
+BP_ARGS=( --db "$DB_HOST" )
+[[ -n "${VALID_HOURS:-}"    ]] && BP_ARGS+=( --valid-hours "$VALID_HOURS" )
+[[ -n "${MIN_GAP_MINS:-}"   ]] && BP_ARGS+=( --min-gap-mins "$MIN_GAP_MINS" )
+[[ -n "${ALIGN:-}"          ]] && BP_ARGS+=( --align "$ALIGN" )
+[[ -n "${LANES:-}"          ]] && BP_ARGS+=( --lanes "$LANES" )
+[[ -n "${TZ:-}"             ]] && BP_ARGS+=( --tz "$TZ" )
+
 if [[ -x "bin/build_plan.py" ]]; then
-  log "Building plan -> bin/build_plan.py ..."
-  python3 bin/build_plan.py
+  log "Building plan -> bin/build_plan.py ${BP_ARGS[*]} ..."
+  python3 bin/build_plan.py "${BP_ARGS[@]}"
 else
   log "WARN: bin/build_plan.py not found; skipping plan build."
 fi
 
-# Emit XMLTV/M3U to host OUT_DIR
+# Emit XMLTV/M3U (pass --db + --out)
 if [[ -x "bin/xmltv_from_plan.py" ]]; then
   log "Writing XMLTV -> $OUT_DIR/epg.xml ..."
-  python3 bin/xmltv_from_plan.py --out "$OUT_DIR/epg.xml"
+  python3 bin/xmltv_from_plan.py --db "$DB_HOST" --out "$OUT_DIR/epg.xml"
 else
   log "WARN: bin/xmltv_from_plan.py missing; assuming resolver serves XML."
 fi
 
 if [[ -x "bin/m3u_from_plan.py" ]]; then
   log "Writing M3U -> $OUT_DIR/playlist.m3u ..."
-  python3 bin/m3u_from_plan.py --out "$OUT_DIR/playlist.m3u"
+  python3 bin/m3u_from_plan.py --db "$DB_HOST" --out "$OUT_DIR/playlist.m3u"
 else
   log "WARN: bin/m3u_from_plan.py missing; assuming resolver serves M3U."
 fi
