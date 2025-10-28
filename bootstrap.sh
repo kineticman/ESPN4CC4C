@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# ESPN4CC4C bootstrap: build, start, wait for health, print sanity
+# ESPN4CC4C bootstrap: build, start, wait for health, first-run assist, sanity
 set -Eeuo pipefail
 
-# --- dirs ---
+# --- ensure dirs exist (host) ---
 mkdir -p data logs out
 
 # --- seed .env if missing ---
@@ -20,19 +20,24 @@ fi
 # --- derive base URL + timings ---
 PORT="${PORT:-8094}"
 BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
+# normalize scheme if user set VC_RESOLVER_BASE_URL without http(s)://
+if [[ "$BASE_URL" != http://* && "$BASE_URL" != https://* ]]; then
+  BASE_URL="http://$BASE_URL"
+fi
+
 HEALTH_URL="${BASE_URL%/}/health"
 EPG_URL="${BASE_URL%/}/out/epg.xml"
 M3U_URL="${BASE_URL%/}/playlist.m3u"
 
-# Configurable delay before readiness loop (helps slow boots)
-BOOT_DELAY="${BOOT_DELAY:-20}"       # seconds
+# delays / tries
+BOOT_DELAY="${BOOT_DELAY:-20}"         # seconds to sleep before health loop
 READINESS_TRIES="${READINESS_TRIES:-120}"
 READINESS_SLEEP="${READINESS_SLEEP:-1}"
 
 echo "== docker compose: stop any previous stack =="
 docker compose down --remove-orphans || true
 
-# If a stray container with the same name exists, remove it (avoids name conflicts)
+# avoid name conflicts from strays
 docker rm -f espn4cc 2>/dev/null || true
 docker network rm espn4cc4c_default 2>/dev/null || true
 
@@ -42,7 +47,7 @@ docker compose build --no-cache
 echo "== docker compose: up =="
 docker compose up -d
 
-# Optional initial delay to let services warm up
+# initial warmup delay
 if [[ "$BOOT_DELAY" -gt 0 ]]; then
   echo "== boot delay: sleeping ${BOOT_DELAY}s before health checks =="
   sleep "$BOOT_DELAY"
@@ -62,6 +67,12 @@ if [[ "$ok" != "1" ]]; then
   exit 1
 fi
 echo "Resolver healthy."
+
+# --- first-run assist: generate outputs if missing/404 ---
+if ! curl -fsS "$EPG_URL" >/dev/null 2>&1 || ! curl -fsS "$M3U_URL" >/devnull 2>&1; then
+  echo "== first run: generating plan + outputs via update_schedule.sh =="
+  PRE_WAIT=5 ./update_schedule.sh
+fi
 
 echo "== sanity checks =="
 xml_bytes="$(curl -fsS "$EPG_URL" | wc -c | tr -d ' ' || echo 0)"
