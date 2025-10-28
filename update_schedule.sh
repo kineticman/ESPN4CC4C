@@ -43,7 +43,7 @@ LOG_DIR="$(resolve_host_path "$LOGS_ENV")"
 mkdir -p "$OUT_DIR" "$LOG_DIR" "$(dirname "$DB_HOST")"
 
 EPG_URL="${BASE_URL%/}/out/epg.xml"
-M3U_URL="${BASE_URL%/}/playlist.m3u"
+M3U_URL="${BASE_URL%/}/out/playlist.m3u"
 HEALTH_URL="${BASE_URL%/}/health"
 
 log() { printf '[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S%z')" "$*"; }
