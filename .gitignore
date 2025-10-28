@@ -31,3 +31,6 @@ __pycache__/
 *.zip
 *.coverage
 .pytest_cache/
+
+# SQLite sidecars (runtime)
+data/*.sqlite3*
