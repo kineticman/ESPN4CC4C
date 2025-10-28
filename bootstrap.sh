@@ -27,7 +27,7 @@ fi
 
 HEALTH_URL="${BASE_URL%/}/health"
 EPG_URL="${BASE_URL%/}/out/epg.xml"
-M3U_URL="${BASE_URL%/}/playlist.m3u"
+M3U_URL="${BASE_URL%/}/out/playlist.m3u"
 
 # delays / tries
 BOOT_DELAY="${BOOT_DELAY:-20}"         # seconds to sleep before health loop
