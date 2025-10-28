@@ -1,4 +1,4 @@
-# ESPN4CC4C — Docker Edition
+# ESPN4CC4C — Docker Edition (v3.0.0)
 
 **ESPN4CC4C (ESPN+ Virtual Channels for Channels DVR)** provides a containerized resolver that turns ESPN+ events into a stable set of virtual channels. It exposes **XMLTV** and **M3U** endpoints that Channels DVR can ingest.
 
@@ -8,7 +8,7 @@
 - 40 managed virtual channels (default)
 - XMLTV EPG generation + M3U playlist
 - Idempotent DB migration on refresh
-- Health endpoint + sanity checks
+- Health endpoint + sanity checks (GET-only)
 - Simple Docker Compose deployment
 - Persistent `data/`, `logs/`, and `out/` (bind mounts)
 
@@ -107,7 +107,7 @@ Options:
 | `VC_RESOLVER_BASE_URL` | *(required)* | Must be reachable by Channels DVR (e.g., `http://192.168.x.x:8094`). |
 | `CC_HOST` | `YOUR_LAN_IP` | The server where CC4C is running. |
 | `CC_PORT` | `5589` | Chrome Capture port. |
-| `M3U_GROUP_TITLE` | `'ESPN+ VC'` | Keep **quotes**; contains a space. |
+| `M3U_GROUP_TITLE` | `'ESPN+ VC'` | Keep **quotes**; contains a space. Not recommended to change. |
 
 ---
 
@@ -173,6 +173,7 @@ docker compose up -d
 
 ---
 
+**Version:** v3.0.0  
 **License:** MIT  
 **Maintainer:** kineticman  
 **This project is not affiliated with or endorsed by ESPN, Disney, or Channels DVR.
