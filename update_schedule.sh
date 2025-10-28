@@ -148,3 +148,6 @@ curl -fsS "http://${LAN}/out/epg.xml" \
 
 # --- provenance ---
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
+
+# De-dup sanity printing: handled here (not in bootstrap)
+bin/epg_probe.sh "${VC_RESOLVER_BASE_URL}"
