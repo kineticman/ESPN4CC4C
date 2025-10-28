@@ -1,102 +1,107 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Always run from repo root
 SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
-set -Eeuo pipefail
 
-# ------------ config / env ------------
-if [[ -f ".env" ]]; then
-  set -a
-  . ./.env
-  set +a
+# Load .env if present
+if [ -f ".env" ]; then
+  set -a; . ./.env; set +a
 fi
 
-TZ="${TZ:-America/New_York}"
+# Defaults
 PORT="${PORT:-8094}"
+TZ="${TZ:-America/New_York}"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
-OUT_DIR="${OUT_DIR:-$ROOT_DIR/out}"
-LOG_DIR="${LOG_DIR:-$ROOT_DIR/logs}"
-mkdir -p "$DATA_DIR" "$OUT_DIR" "$LOG_DIR" "$OUT_DIR/backups"
+# Map DB/OUT/LOGS to host paths (not /app/*) when this script runs on host
+if [ -z "${DB:-}" ]; then
+  DB="$PWD/data/eplus_vc.sqlite3"
+elif [[ "$DB" == /app/* ]]; then
+  DB="$PWD${DB#/app}"
+fi
+if [ -z "${OUT:-}" ]; then
+  OUT="$PWD/out"
+elif [[ "$OUT" == /app/* ]]; then
+  OUT="$PWD${OUT#/app}"
+fi
+if [ -z "${LOGS:-}" ]; then
+  LOGS="$PWD/logs"
+elif [[ "$LOGS" == /app/* ]]; then
+  LOGS="$PWD${LOGS#/app}"
+fi
+mkdir -p "$(dirname "$DB")" "$OUT" "$LOGS"
 
-DB_HOST="${DB_HOST:-$DATA_DIR/eplus_vc.sqlite3}"
-
-BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
-HEALTH_URL="${BASE_URL%/}/health"
-XML_URL="${BASE_URL%/}/out/epg.xml"
-M3U_URL="${BASE_URL%/}/out/playlist.m3u"
-
+# Planner tunables
 VALID_HOURS="${VALID_HOURS:-72}"
 LANES="${LANES:-40}"
 ALIGN="${ALIGN:-30}"
 MIN_GAP_MINS="${MIN_GAP_MINS:-30}"
 
-CC_HOST="${CC_HOST:-127.0.0.1}"
+# Resolver base & CC
+VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
+CC_HOST="${CC_HOST:-${VC_RESOLVER_BASE_URL#http://}}"
+CC_HOST="${CC_HOST#https://}"; CC_HOST="${CC_HOST#http://}"
+CC_HOST="${CC_HOST%%:*}"
 CC_PORT="${CC_PORT:-5589}"
+M3U_GROUP_TITLE="${M3U_GROUP_TITLE:-ESPN+ VC}"
 
-PRE_WAIT="${PRE_WAIT:-5}"
-READINESS_TRIES="${READINESS_TRIES:-120}"
-READINESS_SLEEP="${READINESS_SLEEP:-1}"
+ts() { date +"%Y-%m-%d %H:%M:%S%z"; }
 
-ts() { date +"[%Y-%m-%d %H:%M:%S%z]"; }
+echo "[$(ts)] Pre-wait: sleeping ${PRE_WAIT:-5}s before health checks..."
+sleep "${PRE_WAIT:-5}"
 
-# ------------ readiness ------------
-echo "$(ts) Pre-wait: sleeping ${PRE_WAIT}s before health checks..."
-sleep "$PRE_WAIT"
+echo "[$(ts)] Pre-check: waiting for resolver health at ${VC_RESOLVER_BASE_URL%/}/health ..."
+curl -fsS "${VC_RESOLVER_BASE_URL%/}/health" >/dev/null
+echo "[$(ts)] Resolver is healthy."
 
-echo "$(ts) Pre-check: waiting for resolver health at ${HEALTH_URL} ..."
-ok=0
-for _ in $(seq 1 "$READINESS_TRIES"); do
-  code="$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || true)"
-  if [[ "$code" == "200" ]]; then ok=1; break; fi
-  sleep "$READINESS_SLEEP"
-done
-if [[ "$ok" != "1" ]]; then
-  echo "$(ts) ERROR: resolver not healthy at ${HEALTH_URL}" >&2
+# --- Migrate (hard fail if missing) ---
+if [ ! -x bin/db_migrate.py ]; then
+  echo "[$(ts)] FATAL: bin/db_migrate.py not found in $PWD — aborting."
   exit 1
 fi
-echo "$(ts) Resolver is healthy."
-[${TZ:-$(date +%F\ %T)}] Ingesting ~72h ESPN+ airings -> ${DB:-$PWD/data/eplus_vc.sqlite3} ...
-python3 bin/ingest_watch_graph_all_to_db.py --db "${DB:-$PWD/data/eplus_vc.sqlite3}" --days "${VALID_HOURS:-72}" --tz "${TZ:-America/New_York}"
+echo "[$(ts)] Migrating DB -> $DB ..."
+python3 bin/db_migrate.py --db "$DB" | tee -a "$LOGS/db_migrate.log"
 
-# ------------ migrate ------------
-if [[ -x "bin/db_migrate.py" ]]; then
-  echo "$(ts) Running DB migration -> bin/db_migrate.py --db \"$DB_HOST\" ..."
-  python3 bin/db_migrate.py --db "$DB_HOST" || true
+# --- Ingest (~72h ESPN+ airings) ---
+if [ -n "${WATCH_API_KEY:-}" ]; then
+  echo "[$(ts)] Ingesting ~${VALID_HOURS}h ESPN+ airings into $DB ..."
+  python3 bin/ingest_watch_graph_all_to_db.py --db "$DB" --days 3 --tz "$TZ" | tee -a "$LOGS/ingest.log"
 else
-  echo "$(ts) WARN: bin/db_migrate.py not found; skipping migrate."
+  echo "[$(ts)] WARN: WATCH_API_KEY not set; skipping ingest (plan may be placeholders)."
 fi
 
-# ------------ build plan ------------
-echo "$(ts) Building plan -> bin/build_plan.py --db $DB_HOST --valid-hours $VALID_HOURS --min-gap-mins $MIN_GAP_MINS --align $ALIGN --lanes $LANES --tz $TZ ..."
+# --- Plan build ---
+echo "[$(ts)] Building plan -> bin/build_plan.py --db $DB --valid-hours $VALID_HOURS --min-gap-mins $MIN_GAP_MINS --align $ALIGN --lanes $LANES --tz $TZ ..."
 python3 bin/build_plan.py \
-  --db "$DB_HOST" \
+  --db "$DB" \
   --valid-hours "$VALID_HOURS" \
   --min-gap-mins "$MIN_GAP_MINS" \
   --align "$ALIGN" \
   --lanes "$LANES" \
-  --tz "$TZ"
+  --tz "$TZ" | tee -a "$LOGS/plan.log"
 
-# ------------ write outputs ------------
-echo "$(ts) Writing XMLTV -> $OUT_DIR/epg.xml ..."
-python3 bin/xmltv_from_plan.py --db "$DB_HOST" --out "$OUT_DIR/epg.xml"
+# --- Emit XMLTV/M3U (host OUT path) ---
+XML="$OUT/epg.xml"
+M3U="$OUT/playlist.m3u"
+echo "[$(ts)] Writing XMLTV -> $XML ..."
+python3 bin/xmltv_from_plan.py --db "$DB" --out "$XML" | tee -a "$LOGS/xmltv.log"
 
-echo "$(ts) Writing M3U -> $OUT_DIR/playlist.m3u ..."
-python3 bin/m3u_from_plan.py --db "$DB_HOST" --out "$OUT_DIR/playlist.m3u" --resolver-base "${BASE_URL%/}" --cc-host "${CC_HOST}" --cc-port "${CC_PORT}"
+echo "[$(ts)] Writing M3U -> $M3U ..."
+python3 bin/m3u_from_plan.py --db "$DB" --out "$M3U" \
+  --resolver-base "$VC_RESOLVER_BASE_URL" \
+  --cc-host "$CC_HOST" \
+  --cc-port "$CC_PORT" \
+  | tee -a "$LOGS/m3u.log"
 
-# small XML backup
-cp -f "$OUT_DIR/epg.xml" "$OUT_DIR/backups/epg_$(date +%Y%m%d-%H%M%S).xml" 2>/dev/null || true
+# --- Sanity checks (GET-only) ---
+echo "[$(ts)] Sanity: checking health again..."
+curl -fsS "${VC_RESOLVER_BASE_URL%/}/health" | tee "$LOGS/health_last.json" >/dev/null || true
 
-# ------------ sanity ------------
-echo "$(ts) Sanity: checking health again..."
-curl -fsS "$HEALTH_URL" -o "$LOG_DIR/health_last.json" && echo "$(ts) Health OK, saved: $LOG_DIR/health_last.json"
+echo "[$(ts)] Sanity: measuring XMLTV bytes @ ${VC_RESOLVER_BASE_URL%/}/out/epg.xml ..."
+curl -fsS "${VC_RESOLVER_BASE_URL%/}/out/epg.xml" | wc -c | awk '{print "[info] XMLTV bytes: "$1}'
 
-echo "$(ts) Sanity: measuring XMLTV bytes @ $XML_URL ..."
-xml_bytes="$(curl -fsS "$XML_URL" | wc -c | tr -d ' ' || echo 0)"
-echo "$(ts) XMLTV bytes: ${xml_bytes}"
+echo "[$(ts)] Sanity: measuring M3U bytes @ ${VC_RESOLVER_BASE_URL%/}/out/playlist.m3u ..."
+curl -fsS "${VC_RESOLVER_BASE_URL%/}/out/playlist.m3u" | wc -c | awk '{print "[info] M3U bytes: "$1}'
 
-echo "$(ts) Sanity: measuring M3U bytes @ $M3U_URL ..."
-m3u_bytes="$(curl -fsS "$M3U_URL" | wc -c | tr -d ' ' || echo 0)"
-echo "$(ts) M3U bytes: ${m3u_bytes}"
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
