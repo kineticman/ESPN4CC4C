@@ -115,7 +115,7 @@ fi
 if [[ -f "/app/bin/xmltv_from_plan.py" ]]; then
   log "XMLTV…"
   mkdir -p "$(dirname "$EPG_OUT")"
-  python3 /app/bin/xmltv_from_plan.py \
+  VC_RESOLVER_ORIGIN="$BASE_URL" python3 /app/bin/xmltv_from_plan.py \
     --db "$DB" --out "$EPG_OUT" \
     >> "$LOG_DIR/xmltv.log" 2>&1 || log "XMLTV failed"
 fi
