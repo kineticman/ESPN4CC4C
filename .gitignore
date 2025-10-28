@@ -34,3 +34,15 @@ data/*.sqlite3*
 .DS_Store
 *.swp
 *.bak*
+
+# ESPN4CC4C runtime artifacts
+/data/*
+!/data/.keep
+/out/*
+!/out/.keep
+/logs/*
+!/logs/.keep
+*.sqlite3*
+*.sqlite3-*
+*.gz
+*_writetest
