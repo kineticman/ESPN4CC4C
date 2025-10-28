@@ -1,141 +1,105 @@
 #!/usr/bin/env bash
+# ESPN4CC4C refresh: migrate DB -> build plan -> emit XMLTV/M3U -> sanity checks
 set -Eeuo pipefail
-# ESPN4CC4C refresh cycle: ingest -> migrate -> plan -> xmltv -> m3u
-# - honors .env values
-# - rotates /app/logs/*.log (size-based, gzipped)
-# - optional rewrite of static M3U with CC_HOST/CC_PORT
 
-# -----------------------------
-# config (from env / docker)
-# -----------------------------
 export TZ="${TZ:-America/New_York}"
 
+# Load .env (quote-safe)
+if [[ -f ".env" ]]; then
+  set -a
+  . ./.env
+  set +a
+fi
+
 BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}"
+export VC_RESOLVER_ORIGIN="${VC_RESOLVER_ORIGIN:-$BASE_URL}"
+
 DB="${DB:-/app/data/eplus_vc.sqlite3}"
-EPG_OUT="${OUT:-/app/out/epg.xml}"
-M3U_OUT="${VC_M3U_PATH:-/app/out/virtual_channels.m3u}"
+OUT_DIR="${OUT:-/app/out}"
+LOG_DIR="${LOGS:-/app/logs}"
+mkdir -p "$OUT_DIR" "$LOG_DIR"
 
-CC_HOST="${CC_HOST:-}"
-CC_PORT="${CC_PORT:-5589}"
-M3U_GROUP_TITLE="${M3U_GROUP_TITLE:-ESPN+ VC}"
+EPG_URL="${BASE_URL%/}/out/epg.xml"
+M3U_URL="${BASE_URL%/}/playlist.m3u"
+HEALTH_URL="${BASE_URL%/}/health"
 
-LOG_DIR="/app/logs"
-mkdir -p "$LOG_DIR"
+log() { printf '[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S%z')" "$*"; }
 
-# rotation tunables (override via env if desired)
-LOG_MAX_SIZE_MB="${LOG_MAX_SIZE_MB:-5}"   # rotate at ~5 MB
-LOG_KEEP="${LOG_KEEP:-7}"                 # keep 7 gz archives
-LOG_MAX_BYTES=$(( LOG_MAX_SIZE_MB * 1024 * 1024 ))
-
-log() { printf '[%(%Y-%m-%dT%H:%M:%S%z)T] %s\n' -1 "$*"; }
-on_err() { log "ERROR: line $1 exited non-zero"; }
-trap 'on_err $LINENO' ERR
-
-# -----------------------------
-# mini log rotation
-# -----------------------------
-rotate_logs() {
-  shopt -s nullglob
-  for f in "$LOG_DIR"/*.log; do
-    [[ -f "$f" ]] || continue
-    sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
-    if (( sz >= LOG_MAX_BYTES )); then
-      for i in $(seq "$LOG_KEEP" -1 2); do
-        [[ -f "$f.$((i-1)).gz" ]] && mv -f "$f.$((i-1)).gz" "$f.$i.gz"
-      done
-      cp -f "$f" "$f.1" && : > "$f"
-      gzip -f "$f.1"
-    fi
+readiness_wait() {
+  local url="$1" max_tries="${2:-30}" sleep_s="${3:-1}"
+  local code
+  for ((i=1;i<=max_tries;i++)); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)"
+    if [[ "$code" == "200" ]]; then return 0; fi
+    sleep "$sleep_s"
   done
-  find "$LOG_DIR" -type f -name '*.gz' -mtime +30 -delete || true
-  shopt -u nullglob
+  return 1
 }
 
-# -----------------------------
-# helpers
-# -----------------------------
-derive_host_from_base() {
-  # input like http://192.168.86.72:8094
-  local base="$1"
-  echo "${base#*://}" | cut -d/ -f1 | cut -d: -f1
-}
-
-rewrite_static_m3u_for_cc() {
-  # If the generator wrote chrome://host:port/, rewrite to CC_HOST/CC_PORT
-  local file="$1"
-  [[ -f "$file" ]] || return 0
-  local host="${CC_HOST}"
-  if [[ -z "$host" ]]; then
-    host="$(derive_host_from_base "$BASE_URL")"
-  fi
-  sed -Ei "s#chrome://[^:/]+:[0-9]{2,5}/#chrome://${host}:${CC_PORT}/#g" "$file" || true
-}
-
-# -----------------------------
-# jitter + health wait
-# -----------------------------
-# small randomized jitter (0..120s) stagger multiple containers
-sleep $(( RANDOM % 121 ))
-
-# wait for resolver readiness (max ~60s)
-for i in {1..20}; do
-  if curl -sf "$BASE_URL/health" >/dev/null; then
-    break
-  fi
-  log "waiting /health ($i/20)…"
-  sleep 3
-done
-
-# rotate logs at the start of every cycle
-rotate_logs
-
-# -----------------------------
-# pipeline
-# -----------------------------
-if [[ -f "/app/bin/ingest_watch_graph_all_to_db.py" ]]; then
-  log "Ingest…"
-  python3 /app/bin/ingest_watch_graph_all_to_db.py \
-    --db "$DB" --days 3 --tz "$TZ"  \
-    >> "$LOG_DIR/ingest.log" 2>&1 || log "Ingest failed"
+# Optional pre-wait (seconds) to let the resolver warm up if recently restarted
+PRE_WAIT="${PRE_WAIT:-0}"
+if [[ "$PRE_WAIT" -gt 0 ]]; then
+  log "Pre-wait: sleeping ${PRE_WAIT}s before health checks..."
+  sleep "$PRE_WAIT"
 fi
 
-# DB migrate (idempotent; runs if present in either location)
-if [[ -f "/app/tools/db_migrate.py" ]]; then
-  log "DB migrate…"
-  python3 /app/tools/db_migrate.py \
-    --db "$DB" --lanes "${LANES:-40}" \
-    >> "$LOG_DIR/migrate.log" 2>&1 || log "DB migrate failed"
-elif [[ -f "/app/bin/db_migrate.py" ]]; then
-  log "DB migrate…"
-  python3 /app/bin/db_migrate.py \
-    --db "$DB" --lanes "${LANES:-40}" \
-    >> "$LOG_DIR/migrate.log" 2>&1 || log "DB migrate failed"
+log "Pre-check: waiting for resolver health at $HEALTH_URL ..."
+if ! readiness_wait "$HEALTH_URL" 60 1; then
+  log "ERROR: resolver not healthy @ $HEALTH_URL"
+  exit 1
+fi
+log "Resolver is healthy."
+
+# DB migrate
+if [[ -x "bin/db_migrate.py" ]]; then
+  log "Running DB migration -> bin/db_migrate.py --db \"$DB\" ..."
+  python3 bin/db_migrate.py --db "$DB"
 else
-  log "DB migrate… (skipped – no db_migrate.py)"
+  log "WARN: bin/db_migrate.py not found; skipping migrate."
 fi
 
-if [[ -f "/app/bin/build_plan.py" ]]; then
-  log "Plan…"
-  python3 /app/bin/build_plan.py \
-    --db "$DB" --tz "$TZ" \
-    >> "$LOG_DIR/plan.log" 2>&1 || log "Plan failed"
+# Build plan
+if [[ -x "bin/build_plan.py" ]]; then
+  log "Building plan -> bin/build_plan.py ..."
+  python3 bin/build_plan.py
+else
+  log "WARN: bin/build_plan.py not found; skipping plan build."
 fi
 
-if [[ -f "/app/bin/xmltv_from_plan.py" ]]; then
-  log "XMLTV…"
-  mkdir -p "$(dirname "$EPG_OUT")"
-  VC_RESOLVER_ORIGIN="$BASE_URL" python3 /app/bin/xmltv_from_plan.py \
-    --db "$DB" --out "$EPG_OUT" \
-    >> "$LOG_DIR/xmltv.log" 2>&1 || log "XMLTV failed"
+# Emit XMLTV/M3U
+if [[ -x "bin/xmltv_from_plan.py" ]]; then
+  log "Writing XMLTV -> bin/xmltv_from_plan.py ..."
+  python3 bin/xmltv_from_plan.py --out "$OUT_DIR/epg.xml"
+else
+  log "WARN: bin/xmltv_from_plan.py missing; assuming resolver serves XML."
 fi
 
-if [[ -f "/app/bin/m3u_from_plan.py" ]]; then
-  log "M3U…"
-  mkdir -p "$(dirname "$M3U_OUT")"
-  python3 /app/bin/m3u_from_plan.py \
-    --db "$DB" --out "$M3U_OUT" \
-    >> "$LOG_DIR/m3u.log" 2>&1 || log "M3U failed"
-  rewrite_static_m3u_for_cc "$M3U_OUT"
+if [[ -x "bin/m3u_from_plan.py" ]]; then
+  log "Writing M3U -> bin/m3u_from_plan.py ..."
+  python3 bin/m3u_from_plan.py --out "$OUT_DIR/playlist.m3u"
+else
+  log "WARN: bin/m3u_from_plan.py missing; assuming resolver serves M3U."
 fi
 
-log "Update cycle complete."
+# Sanity checks
+log "Sanity: checking health again..."
+curl -fsS "$HEALTH_URL" -o "$LOG_DIR/health_last.json" || { log "ERROR: health GET failed"; exit 1; }
+log "Health OK, saved: $LOG_DIR/health_last.json"
+
+log "Sanity: measuring XMLTV bytes @ $EPG_URL ..."
+XML_BYTES="$(curl -fsS "$EPG_URL" | wc -c | tr -d ' ')"
+log "XMLTV bytes: $XML_BYTES"
+
+log "Sanity: measuring M3U bytes @ $M3U_URL ..."
+M3U_BYTES="$(curl -fsS "$M3U_URL" | wc -c | tr -d ' ')"
+log "M3U bytes: $M3U_BYTES"
+
+log "Sanity: first <channel id> from XMLTV ..."
+FIRST_CHAN_ID="$(curl -fsS "$EPG_URL" | grep -oE '<channel[^>]+id="[^"]+"' | head -n1 | sed -E 's/.*id="([^"]+)".*/\1/')"
+log "First channel id: ${FIRST_CHAN_ID:-N/A}"
+
+log "Sanity: first tvg-id from M3U ..."
+FIRST_TVG_ID="$(curl -fsS "$M3U_URL" | awk '/^#EXTINF:/ {print; exit}' | sed -n 's/.*tvg-id="\([^"]\+\)".*/\1/p')"
+log "First tvg-id: ${FIRST_TVG_ID:-N/A}"
+
+log "Cycle complete."

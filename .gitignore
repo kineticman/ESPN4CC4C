@@ -1,48 +1,17 @@
-# --- Python / venv ---
-.venv/
+# Python / build
 __pycache__/
 *.pyc
 
-# --- Local env & secrets ---
+# Local artifacts
 .env
-.env.*
-!.env.example
-
-# --- Generated data / runtime ---
-data/
-out/
-logs/
+dist/
 archive/
-backups/
-releases/
-*.log
-*.log.*
+*.tar.gz
+*.zip
 
-# Keep directory placeholders if you want them versioned
-!data/.gitkeep
-!out/.gitkeep
-!logs/.gitkeep
-!archive/.gitkeep
-!backups/.gitkeep
-
-# --- Databases (don’t commit working SQLite DBs) ---
-*.sqlite3
-data/*.sqlite3*
-*.sqlite3-*
-
-# --- OS/editor junk ---
-.DS_Store
-*.swp
-*.bak*
-
-# ESPN4CC4C runtime artifacts
-/data/*
-!/data/.keep
-/out/*
-!/out/.keep
-/logs/*
-!/logs/.keep
-*.sqlite3*
-*.sqlite3-*
-*.gz
-*_writetest
+# Runtime outputs
+data/*.sqlite3
+data/*-*.sqlite3
+logs/*
+out/*.xml
+out/*.m3u

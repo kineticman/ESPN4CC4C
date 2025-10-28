@@ -1,19 +1,23 @@
 services:
   espn4cc:
-    build: .
     container_name: espn4cc
-    init: true
-    stop_grace_period: 15s
-    ports:
-      - "${PORT:-8094}:8094"
-    env_file:
-      - .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       - TZ=${TZ:-America/New_York}
+      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}
+      - VC_RESOLVER_ORIGIN=${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}
+    ports:
+      - "${PORT:-8094}:${PORT:-8094}"   # resolver/API
     volumes:
       - ./data:/app/data
-      - ./out:/app/out
       - ./logs:/app/logs
-      - ./.env:/app/.env:ro
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
+      - ./out:/app/out
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8094/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s

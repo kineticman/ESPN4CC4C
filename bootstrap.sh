@@ -1,26 +1,83 @@
 #!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")"
+# ESPN4CC4C bootstrap: build, start, wait for health, print sanity
+set -Eeuo pipefail
 
+# --- dirs ---
 mkdir -p data logs out
-[[ -f .env ]] || cp -n .env.example .env
 
-# Write/ensure your LAN resolver base (edit as needed)
-if ! grep -q '^VC_RESOLVER_BASE_URL=' .env; then
-  echo 'VC_RESOLVER_BASE_URL=http://192.168.86.72:8094' >> .env
+# --- seed .env if missing ---
+if [[ ! -f .env && -f .env.example ]]; then
+  cp .env.example .env
 fi
 
-# Bring up container
-if command -v docker compose >/dev/null 2>&1; then
-  docker compose up -d
-else
-  docker-compose up -d
+# --- load env (quote-safe) ---
+if [[ -f ".env" ]]; then
+  set -a
+  . ./.env
+  set +a
 fi
 
-# First-run nudge (creates DB, builds plan, writes outputs)
-CID=$(docker ps --filter "name=espn4cc" --format '{{.ID}}')
-docker exec -it "$CID" /app/update_schedule.sh || true
+# --- derive base URL + timings ---
+PORT="${PORT:-8094}"
+BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
+HEALTH_URL="${BASE_URL%/}/health"
+EPG_URL="${BASE_URL%/}/out/epg.xml"
+M3U_URL="${BASE_URL%/}/playlist.m3u"
 
-echo "Done. Test:"
-echo "  EPG: http://<host>:8094/out/epg.xml"
-echo "  M3U: http://<host>:8094/playlist.m3u"
+# Configurable delay before readiness loop (helps slow boots)
+BOOT_DELAY="${BOOT_DELAY:-20}"       # seconds
+READINESS_TRIES="${READINESS_TRIES:-120}"
+READINESS_SLEEP="${READINESS_SLEEP:-1}"
+
+echo "== docker compose: stop any previous stack =="
+docker compose down --remove-orphans || true
+
+# If a stray container with the same name exists, remove it (avoids name conflicts)
+docker rm -f espn4cc 2>/dev/null || true
+docker network rm espn4cc4c_default 2>/dev/null || true
+
+echo "== docker compose: build =="
+docker compose build --no-cache
+
+echo "== docker compose: up =="
+docker compose up -d
+
+# Optional initial delay to let services warm up
+if [[ "$BOOT_DELAY" -gt 0 ]]; then
+  echo "== boot delay: sleeping ${BOOT_DELAY}s before health checks =="
+  sleep "$BOOT_DELAY"
+fi
+
+echo "== readiness wait on ${HEALTH_URL} =="
+ok=0
+for i in $(seq 1 "$READINESS_TRIES"); do
+  code="$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || true)"
+  if [[ "$code" == "200" ]]; then ok=1; break; fi
+  sleep "$READINESS_SLEEP"
+done
+if [[ "$ok" != "1" ]]; then
+  echo "ERROR: resolver not healthy @ $HEALTH_URL" >&2
+  docker compose ps
+  docker compose logs --no-color | tail -n 200 || true
+  exit 1
+fi
+echo "Resolver healthy."
+
+echo "== sanity checks =="
+xml_bytes="$(curl -fsS "$EPG_URL" | wc -c | tr -d ' ' || echo 0)"
+m3u_bytes="$(curl -fsS "$M3U_URL" | wc -c | tr -d ' ' || echo 0)"
+first_chan_id="$(curl -fsS "$EPG_URL" \
+  | grep -oE '<channel[^>]+id="[^"]+"' \
+  | head -n1 \
+  | sed -E 's/.*id="([^"]+)".*/\1/')"
+first_tvg_id="$(curl -fsS "$M3U_URL" \
+  | awk '/^#EXTINF:/ {print; exit}' \
+  | sed -n 's/.*tvg-id="\([^"]\+\)".*/\1/p')"
+
+printf 'Health: OK\nXMLTV bytes: %s\nM3U bytes: %s\nFirst channel id: %s\nFirst tvg-id: %s\n' \
+  "${xml_bytes:-0}" "${m3u_bytes:-0}" "${first_chan_id:-N/A}" "${first_tvg_id:-N/A}"
+
+echo
+echo "Add to Channels DVR:"
+echo "  * M3U:   ${M3U_URL}"
+echo "  * XMLTV: ${EPG_URL}"
