@@ -106,7 +106,10 @@ fi
 
 if [[ -x "bin/m3u_from_plan.py" ]]; then
   log "Writing M3U -> $OUT_DIR/playlist.m3u ..."
-  python3 bin/m3u_from_plan.py --db "$DB_HOST" --out "$OUT_DIR/playlist.m3u"
+  python3 bin/m3u_from_plan.py --db "$DB_HOST" --out "$OUT_DIR/playlist.m3u" \
+    --resolver-base "${BASE_URL%/}" \
+    --cc-host "192.168.86.72}" \
+    --cc-port "5589"
 else
   log "WARN: bin/m3u_from_plan.py missing; assuming resolver serves M3U."
 fi
