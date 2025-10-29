@@ -1,1 +1,5 @@
-* text=auto eol=lf
+# Keep shell scripts LF on checkout (Windows/Git Bash safe)
+*.sh text eol=lf
+
+# PowerShell scripts normalize as text (CRLF or LF OK)
+*.ps1 text
