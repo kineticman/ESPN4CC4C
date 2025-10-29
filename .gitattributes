@@ -3,3 +3,4 @@
 
 # PowerShell scripts normalize as text (CRLF or LF OK)
 *.ps1 text
+bootstrap.ps1 text eol=lf
