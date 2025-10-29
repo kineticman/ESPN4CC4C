@@ -76,3 +76,6 @@ echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null ||
 
 # Provenance
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
+
+# Provenance
+echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
