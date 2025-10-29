@@ -122,3 +122,14 @@ bin/epg_probe.sh "${VC_RESOLVER_BASE_URL}" || true
 
 # Provenance
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
+
+# --- install summary (host) ---
+echo "== installation summary =="
+echo "Resolver: ${VC_RESOLVER_BASE_URL}"
+echo "Health:   ${VC_RESOLVER_BASE_URL}/health"
+echo "XMLTV:    ${VC_RESOLVER_BASE_URL}/out/epg.xml"
+echo "M3U:      ${VC_RESOLVER_BASE_URL}/out/playlist.m3u"
+echo
+echo "In Channels DVR: Settings > Sources > Add >"
+echo "  - M3U:    ${VC_RESOLVER_BASE_URL}/out/playlist.m3u"
+echo "  - XMLTV:  ${VC_RESOLVER_BASE_URL}/out/epg.xml"
