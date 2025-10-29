@@ -73,3 +73,6 @@ echo "== first run: generating plan + outputs via update_schedule.sh =="
 
 # Provenance
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
+
+# Provenance
+echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
