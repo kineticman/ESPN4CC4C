@@ -48,16 +48,26 @@ def ensure_columns(cur, table, want_cols):
         if colname not in have:
             cur.execute(f"ALTER TABLE {table} ADD COLUMN {colddl}")
 
-def seed_channels(cur, lanes:int):
+def seed_channels(cur, lanes: int):
+    """Seed channels if table empty (ESPN+ conventions).
+    chno starts at 20010; names 'ESPN+ EPlus <n>'; group 'ESPN+ VC'."""
     try:
         c = cur.execute("SELECT COUNT(*) FROM channel").fetchone()[0]
-    except sqlite3.OperationalError:
+    except Exception:
         c = 0
-    if c: return 0
-    rows = [(i, f"eplus{i:02d}", "ESPN+ VC", 1) for i in range(1, lanes+1)]
-    cur.executemany("INSERT INTO channel(chno,name,group_name,active) VALUES(?,?,?,?)", rows)
+    if c:
+        return 0
+    start_chno = 20010
+    rows = []
+    for i in range(1, lanes + 1):
+        chno = start_chno + (i - 1)
+        name = f"ESPN+ EPlus {i}"
+        rows.append((chno, name, "ESPN+ VC", 1))
+    cur.executemany(
+        "INSERT INTO channel(chno,name,group_name,active) VALUES(?,?,?,?)",
+        rows
+    )
     return len(rows)
-
 def drop_unique_index_on_checksum(cur):
     name = has_unique_on(cur, "plan_run", "checksum")
     if name:

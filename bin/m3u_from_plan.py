@@ -3,6 +3,14 @@ import argparse, sqlite3
 from urllib.parse import quote
 from datetime import datetime, timezone
 
+import os as _os
+DEFAULT_RESOLVER = _os.getenv('VC_RESOLVER_BASE_URL') or _os.getenv('VC_RESOLVER_ORIGIN') or 'http://127.0.0.1:8094'
+DEFAULT_CC_HOST  = _os.getenv('CC_HOST', '127.0.0.1')
+try:
+    DEFAULT_CC_PORT  = int(_os.getenv('CC_PORT','5589'))
+except Exception:
+    DEFAULT_CC_PORT = 5589
+M3U_GROUP_TITLE = _os.getenv('M3U_GROUP_TITLE','ESPN+ VC')
 SERVER_IP     = "192.168.86.72"
 RESOLVER_BASE = f"http://{SERVER_IP}:8094"
 CC_HOST       = SERVER_IP
