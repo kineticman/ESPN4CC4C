@@ -14,3 +14,8 @@
 - Windows + Linux bootstrap verified end-to-end
 - README refreshed (onboarding + sanity checks)
 - Small bootstrap.sh fixes and cleanup
+
+## v3.7
+- Seed channels 20010+ (EPlus naming)
+- Env-driven M3U defaults (+ VC_M3U_PATH)
+- Guarded version import
