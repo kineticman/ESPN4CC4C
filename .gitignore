@@ -66,3 +66,4 @@ bootstrap.ps1
 .env.*
 !env.example
 !.env.example
+env.windows.example
