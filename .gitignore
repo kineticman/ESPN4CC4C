@@ -38,3 +38,17 @@ data/*.sqlite3*
 docker-compose.override.yml
 *.bak.*
 RELEASE_NOTES_*.md
+# --- ephemeral ---
+__pycache__/
+*.py[cod]
+*.bak.*
+out/db_inspect.tgz
+out/db_inspect_*/
+logs/*.log
+logs/*.json
+logs/*.jsonl
+# keep release artifacts; ignore local outputs
+out/backups/epg_*.xml
+out/epg.xml
+out/playlist.m3u
+out/virtual_channels.m3u
