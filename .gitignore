@@ -53,3 +53,16 @@ out/epg.xml
 out/playlist.m3u
 out/virtual_channels.m3u
 bootstrap.ps1
+# --- backups & local junk ---
+*.bak
+*.bak.*
+*.backup
+*.backup.*
+*.old
+*~
+.env.backup*
+# keep examples but ignore real env files
+.env
+.env.*
+!env.example
+!.env.example
