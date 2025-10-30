@@ -177,7 +177,7 @@ http://192.168.1.100:8094/out/epg.xml
 
 **M3U Playlist:**
 ```
-http://192.168.1.100:8094/playlist.m3u
+http://192.168.1.100:8094/out/playlist.m3u
 ```
 
 4. Save and allow Channels DVR to refresh
