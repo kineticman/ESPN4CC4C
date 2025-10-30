@@ -78,7 +78,7 @@ echo "✓ ${PROG_COUNT} programmes found"
 
 echo ""
 echo "== Re-check M3U (preview first 600 chars) =="
-curl -fsS "${VC_RESOLVER_BASE_URL}/playlist.m3u" 2>/dev/null | head -c 600 || echo "[warn] Could not fetch M3U"
+curl -fsS "${VC_RESOLVER_BASE_URL}/out/playlist.m3u" 2>/dev/null | head -c 600 || echo "[warn] Could not fetch M3U"
 
 echo ""
 echo "========================================"
