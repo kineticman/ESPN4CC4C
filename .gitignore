@@ -52,3 +52,4 @@ out/backups/epg_*.xml
 out/epg.xml
 out/playlist.m3u
 out/virtual_channels.m3u
+bootstrap.ps1
