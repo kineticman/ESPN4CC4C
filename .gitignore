@@ -34,3 +34,7 @@ __pycache__/
 
 # SQLite sidecars (runtime)
 data/*.sqlite3*
+.env
+docker-compose.override.yml
+*.bak.*
+RELEASE_NOTES_*.md
