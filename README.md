@@ -40,7 +40,7 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 2) **Run the Windows bootstrap** (replace `192.168.86.80` with your LAN IP):
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-.ootstrap_windows_hardened.ps1 -LanIp 192.168.86.80
+.bootstrap.ps1 -LanIp 192.168.86.80
 ```
 
 What it does:
