@@ -13,48 +13,69 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 
 **Port Used:** `8094/tcp`
 
+---
+
 ## Installation — Windows
 
-### If you have GIT, use this!  
-1. git clone https://github.com/kineticman/ESPN4CC4C
-2  go to step 3
+### Step 1: Get the Project Files
 
-### Step 1: Download the Project 
+**Option A - Using Git (recommended):**
+```powershell
+git clone https://github.com/kineticman/ESPN4CC4C.git
+cd ESPN4CC4C
+```
+
+**Option B - Download ZIP:**
 1. Go to **https://github.com/kineticman/ESPN4CC4C**
-2. Click the green **"Code"** button
-3. Click **"Download ZIP"**
-4. Extract the ZIP file to a location like `C:\ESPN4CC4C` or your Desktop
-5. Remember where you put this folder
+2. Click the green **"Code"** button → **"Download ZIP"**
+3. Extract to a location like `C:\ESPN4CC4C`
+4. Open that folder
 
 ### Step 2: Find Your Computer's IP Address
 1. Press `Windows Key + R`, type `cmd`, and press Enter
-2. In the command prompt, type `ipconfig` and press Enter
+2. Type `ipconfig` and press Enter
 3. Look for **"IPv4 Address"** under your active network adapter
    - Example: `192.168.1.100` or `10.0.0.50`
    - Note: This is NOT `127.0.0.1`
 4. Write down this IP address
 
-### Step 3a:
-1. Important - you must update the .ENV file!
-2. Open Powershell, go to directory and:
-	mv .env.example .env
-3. Edit .ENV
-4. Focus on the IP addresses and ports
+### Step 3: Configure Your Settings
+1. In the project folder, copy **`.env.example`** to **`.env`**:
+   - Right-click on `.env.example` and select **Copy**
+   - Right-click in the folder and select **Paste**
+   - Rename the copy from `.env.example - Copy` to **`.env`**
+   - (If you can't see the files, enable "Show hidden files" in File Explorer's View menu)
+2. Right-click **`.env`** and open it with Notepad
+3. Find these two lines and update them with your IP from Step 2:
+   ```
+   VC_RESOLVER_BASE_URL=http://YOUR_LAN_IP:8094
+   CC_HOST=YOUR_LAN_IP
+   ```
+   Change to:
+   ```
+   VC_RESOLVER_BASE_URL=http://192.168.1.100:8094
+   CC_HOST=192.168.1.100
+   ```
+4. Save and close the file
 
-### Step 3b: Run the Bootstrap Script
-1. From Powershell project directory, run:
-  ./windowsbootstrap.ps1
-4. When prompted, enter your IP address from Step 2
-5. Press Enter and wait 1-2 minutes while it sets everything up
+### Step 4: Run the Bootstrap Script
+1. Right-click in the project folder while holding **Shift**
+2. Select **"Open PowerShell window here"**
+3. Run the bootstrap script:
+   ```powershell
+   .\windowsbootstrap.ps1 -LanIp 192.168.1.100
+   ```
+   (Replace `192.168.1.100` with your actual IP)
+4. Wait 1-2 minutes while it sets everything up
 
 The script will:
 - Create necessary folders (`data`, `logs`, `out`)
-- Configure your environment
 - Start the Docker container
-- Build the initial channel guide
+- Download ESPN+ event data
+- Build the channel guide and playlist
 
-### Step 4: Verify Installation
-Open a web browser and navigate to (using your IP):
+### Step 5: Verify Installation
+Open a web browser and go to (using your IP):
 ```
 http://192.168.1.100:8094/health
 ```
@@ -71,13 +92,18 @@ You should see: `{"ok":true}`
 - Right-click `windowsbootstrap.ps1` and select "Run with PowerShell"
 - If prompted about execution policy, choose "Yes" or "Run anyway"
 
-**Can't see the `.ps1` extension:**
+**Can't see the `.env.example` or `.ps1` files:**
 - In File Explorer, go to View → Show → File name extensions
+- Make sure "Hidden items" is checked
 
 **Health check fails:**
 - Verify Docker Desktop is running (whale icon in system tray)
 - In Docker Desktop, go to Containers and confirm `espn4cc` is running
 - Check that port 8094 isn't blocked by your firewall
+
+**"Ingested 0 airings" error:**
+- Check that `WATCH_API_KEY` is set in your `.env` file
+- The default key should be: `0dbf88e8-cc6d-41da-aa83-18b5c630bc5c`
 
 **Container shows as "Exited":**
 - Open Docker Desktop → Containers
@@ -88,13 +114,11 @@ You should see: `{"ok":true}`
 
 ## Installation — Linux
 
-### Step 1: Download the Project
+### Step 1: Get the Project Files
 ```bash
 git clone https://github.com/kineticman/ESPN4CC4C.git
 cd ESPN4CC4C
 ```
-
-Or download the ZIP from GitHub if you don't have git installed.
 
 ### Step 2: Find Your IP Address
 ```bash
@@ -102,23 +126,34 @@ hostname -I | awk '{print $1}'
 ```
 Note the output (e.g., `192.168.1.100`)
 
-### Step 3: Configure Environment
+### Step 3: Configure Settings
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Update the ENV file - focus on the IP addresses.  Most of rest is fine to leave alone (at your own risk - be careful)
+Update these lines with your IP address (replace `YOUR_LAN_IP` with your actual IP):
 ```
+VC_RESOLVER_BASE_URL=http://192.168.1.100:8094
+CC_HOST=192.168.1.100
+```
+
+Optionally adjust `TZ=` for your timezone.
 
 Save with `Ctrl+X`, then `Y`, then `Enter`
 
-### Step 4: Start the Service
+### Step 4: Run Bootstrap
 ```bash
-docker compose up -d
+./bootstrap.sh
 ```
 
-Wait 30 seconds, then verify:
+This will:
+- Build and start the container
+- Download ESPN+ schedule data
+- Generate XMLTV guide and M3U playlist
+- Show a summary with URLs
+
+Verify the service is running:
 ```bash
 curl http://192.168.1.100:8094/health
 ```
@@ -142,7 +177,7 @@ http://192.168.1.100:8094/out/epg.xml
 
 **M3U Playlist:**
 ```
-http://192.168.1.100:8094/out/playlist.m3u
+http://192.168.1.100:8094/playlist.m3u
 ```
 
 4. Save and allow Channels DVR to refresh
@@ -176,31 +211,64 @@ Automatically rebuilds based on your configuration. Default window is 72 hours o
 **Something not working?**
 1. Verify Docker is running
 2. Check `http://YOUR-IP:8094/health` returns `{"ok":true}`
-3. Review container logs in Docker Desktop
+3. Review container logs: `docker logs espn4cc --tail 100`
 4. Ensure port 8094 isn't blocked by firewall
 
 ---
 
-## Technical Details (For Advanced Users)
+## Configuration Reference
 
-### Default Settings
-- **Port**: 8094
-- **Channels**: 40 (configurable via `LANES` in `.env`)
-- **Guide window**: 72 hours (configurable via `VALID_HOURS`)
-- **Timezone**: America/New_York (change `TZ` in `.env`)
+### Environment Variables (.env)
+
+The `.env` file controls all service behavior. Here's what you need to know:
+
+#### Must Update ⚠️
+These **must** be changed from defaults:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `VC_RESOLVER_BASE_URL` | Your computer's IP + port (must be reachable by Channels DVR) | `http://192.168.1.100:8094` |
+| `CC_HOST` | Same IP as above (for Chrome Capture integration) | `192.168.1.100` |
+| `TZ` | Your timezone in IANA format ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) | `America/New_York` |
+
+#### Common Settings
+Good defaults, but adjust if needed:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8094` | Service port |
+| `LANES` | `40` | Number of virtual channels (eplus1–eplusN) |
+| `VALID_HOURS` | `72` | Hours of guide data to maintain |
+| `CC_PORT` | `5589` | Chrome Capture port (if using) |
+
+#### Advanced Settings
+Don't change unless you have a specific need:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALIGN` | `30` | Align programs to minute marks (:00, :30) |
+| `MIN_GAP_MINS` | `30` | Minimum gap between programs |
+| `WATCH_API_KEY` | (provided) | ESPN API key (shared, don't change) |
+
+---
+
+## Manual Operations
 
 ### Rebuild Guide Manually
 ```bash
-docker compose exec espn4cc sh -c '
-  python3 /app/bin/build_plan.py --db /app/data/eplus_vc.sqlite3 --valid-hours 72;
-  python3 /app/bin/xmltv_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/epg.xml;
-  python3 /app/bin/m3u_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/playlist.m3u
-'
+docker exec espn4cc python3 /app/bin/build_plan.py --db /app/data/eplus_vc.sqlite3 --valid-hours 72
+docker exec espn4cc python3 /app/bin/xmltv_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/epg.xml
+docker exec espn4cc python3 /app/bin/m3u_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/playlist.m3u --resolver-base http://192.168.1.100:8094 --cc-host 192.168.1.100 --cc-port 5589
+```
+
+### Refresh ESPN+ Schedule Data
+```bash
+docker exec espn4cc python3 /app/bin/ingest_watch_graph_all_to_db.py --db /app/data/eplus_vc.sqlite3 --days 3 --tz America/New_York
 ```
 
 ### View Logs
 ```bash
-docker compose logs --tail=200 espn4cc
+docker logs espn4cc --tail 200
 ```
 
 ### Force Restart
@@ -222,10 +290,10 @@ ESPN4CC4C/
 ├─ docker-compose.yml        # Docker configuration
 ├─ .env                      # Your settings (IP addresses, etc)
 ├─ windowsbootstrap.ps1      # Windows installer script
+├─ bootstrap.sh              # Linux installer script
 └─ README.md                 # This file
 ```
 
 ---
-
 
 **Enjoy!** If something's confusing, open an issue and tell us what you expected to see versus what happened.

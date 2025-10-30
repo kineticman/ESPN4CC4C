@@ -70,12 +70,24 @@ docker compose exec -T espn4cc bash -lc '
 echo "== first run: generating plan + outputs via update_schedule.sh =="
 ./update_schedule.sh || true
 
+# ---------- Final tests & summary ----------
+echo ""
+echo "== Re-check XMLTV (counting programmes) =="
+PROG_COUNT=$(curl -fsS "${VC_RESOLVER_BASE_URL}/out/epg.xml" 2>/dev/null | grep -c '<programme' || echo "0")
+echo "✓ ${PROG_COUNT} programmes found"
+
+echo ""
+echo "== Re-check M3U (preview first 600 chars) =="
+curl -fsS "${VC_RESOLVER_BASE_URL}/playlist.m3u" 2>/dev/null | head -c 600 || echo "[warn] Could not fetch M3U"
+
+echo ""
+echo "========================================"
+echo "✓ DONE"
+echo "Health   : ${VC_RESOLVER_BASE_URL}/health"
+echo "XMLTV    : ${VC_RESOLVER_BASE_URL}/out/epg.xml"
+echo "M3U      : ${VC_RESOLVER_BASE_URL}/out/playlist.m3u"
+echo "========================================"
 
 # Provenance
-echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
-
-# Provenance
-echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
-
-# Provenance
+echo ""
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
