@@ -10,3 +10,7 @@
 - FastAPI resolver on :8094 (EPG/M3U/health)
 - Idempotent DB migration + plan builder
 - 40 virtual channels (default)
+## v3.5 — 2025-10-30
+- Windows + Linux bootstrap verified end-to-end
+- README refreshed (onboarding + sanity checks)
+- Small bootstrap.sh fixes and cleanup
