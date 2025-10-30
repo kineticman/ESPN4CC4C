@@ -15,7 +15,11 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 
 ## Installation — Windows
 
-### Step 1: Download the Project
+### If you have GIT, use this!  
+1. git clone https://github.com/kineticman/ESPN4CC4C
+2  go to step 3
+
+### Step 1: Download the Project 
 1. Go to **https://github.com/kineticman/ESPN4CC4C**
 2. Click the green **"Code"** button
 3. Click **"Download ZIP"**
@@ -30,11 +34,16 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
    - Note: This is NOT `127.0.0.1`
 4. Write down this IP address
 
-### Step 3: Run the Bootstrap Script
-1. Navigate to the extracted `ESPN4CC4C` folder
-2. Right-click on **`windowsbootstrap.ps1`**
-3. Select **"Run with PowerShell"**
-   - If you don't see this option, hold Shift while right-clicking and choose "Open PowerShell window here", then run `.\windowsbootstrap.ps1`
+### Step 3a:
+1. Important - you must update the .ENV file!
+2. Open Powershell, go to directory and:
+	mv .env.example .env
+3. Edit .ENV
+4. Focus on the IP addresses and ports
+
+### Step 3b: Run the Bootstrap Script
+1. From Powershell project directory, run:
+  ./windowsbootstrap.ps1
 4. When prompted, enter your IP address from Step 2
 5. Press Enter and wait 1-2 minutes while it sets everything up
 
@@ -99,10 +108,7 @@ cp .env.example .env
 nano .env
 ```
 
-Update these two lines with your IP address:
-```
-VC_RESOLVER_BASE_URL=http://192.168.1.100:8094
-CC_HOST=192.168.1.100
+Update the ENV file - focus on the IP addresses.  Most of rest is fine to leave alone (at your own risk - be careful)
 ```
 
 Save with `Ctrl+X`, then `Y`, then `Enter`
@@ -136,7 +142,7 @@ http://192.168.1.100:8094/out/epg.xml
 
 **M3U Playlist:**
 ```
-http://192.168.1.100:8094/playlist.m3u
+http://192.168.1.100:8094/out/playlist.m3u
 ```
 
 4. Save and allow Channels DVR to refresh

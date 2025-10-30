@@ -1,144 +1,1 @@
-<#  bootstrap_verified.ps1 - Windows Docker quickstart for ESPN4CC4C
-     * Creates data/logs/out
-     * Writes clean .env (UTF-8 no BOM, LF)
-     * Starts container and waits for /health
-     * Migrates DB, ingests 72h, builds EPG+M3U
-     * Runs two final tests (EPG count + M3U preview)
-#>
-
-param(
-  [Parameter(Mandatory=$true)][string]$LanIp,
-  [int]$Port   = 8094,
-  [int]$CCPort = 5589
-)
-
-# ---------- Helpers ----------
-function Write-Info ($msg) { Write-Host "[INFO] $msg" -ForegroundColor Cyan }
-function Write-Ok   ($msg) { Write-Host "[ OK ] $msg" -ForegroundColor Green }
-function Write-Err  ($msg) { Write-Host "[ERR ] $msg" -ForegroundColor Red }
-
-# ---------- 0) Sanity ----------
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Err "Docker Desktop / docker CLI not found in PATH"; exit 1
-}
-$env:COMPOSE_PROJECT_NAME = "espn4cc"
-
-# ---------- 1) Folders ----------
-@(".\data",".\logs",".\out") | ForEach-Object {
-    if (-not (Test-Path $_)) { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
-}
-Write-Ok "Ensured ./data ./logs ./out"
-
-# ---------- 2) .env (UTF-8 no BOM, LF) ----------
-$envPath = ".env"
-
-# Keep existing key if present
-$existingKey = ""
-if (Test-Path $envPath) {
-    $raw = Get-Content $envPath -Raw
-    if ($raw -match "(?m)^WATCH_API_KEY=(.*)$") { $existingKey = $Matches[1].Trim() }
-}
-if ([string]::IsNullOrWhiteSpace($existingKey)) {
-    $existingKey = "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"
-    Write-Info "Using default WATCH_API_KEY"
-}
-
-$envContent = @"
-# --- Service ---
-PORT=$Port
-TZ=America/New_York
-
-# --- Container paths (bind mounts map host -> /app/*) ---
-DB=/app/data/eplus_vc.sqlite3
-OUT=/app/out
-LOGS=/app/logs
-VC_M3U_PATH=/app/out/playlist.m3u
-
-# --- Planner tunables ---
-VALID_HOURS=72
-LANES=40
-ALIGN=30
-MIN_GAP_MINS=30
-
-# --- Resolver base URL (LAN reachable; do NOT use 127.0.0.1) ---
-VC_RESOLVER_BASE_URL=http://${LanIp}:${Port}
-
-# --- Chrome Capture integration ---
-CC_HOST=$LanIp
-CC_PORT=$CCPort
-M3U_GROUP_TITLE=ESPN+ VC
-
-# --- ESPN Watch API (public per project notes) ---
-WATCH_API_KEY=$existingKey
-"@
-
-# Normalize newlines and save as UTF-8 no BOM
-$envContent = $envContent -replace "`r`n", "`n" -replace "`r","`n"
-[IO.File]::WriteAllText($envPath, $envContent, [Text.UTF8Encoding]::new($false))
-Write-Ok ".env written (LF, no BOM)"
-
-# ---------- 3) Start container ----------
-Write-Info "Starting container..."
-docker compose up -d --force-recreate | Out-Null
-if ($LASTEXITCODE) { Write-Err "docker compose up failed"; exit 2 }
-
-# ---------- 4) Health wait ----------
-$healthUrl = "http://${LanIp}:${Port}/health"
-Write-Info "Waiting for health at $healthUrl"
-$healthy = $false
-for ($i=0; $i -lt 60; $i++) {
-    try {
-        $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3
-        if ($r.StatusCode -eq 200 -and $r.Content -like '*"ok":true*') { $healthy = $true; break }
-    } catch { Start-Sleep -Milliseconds 500 }
-    Start-Sleep -Seconds 1
-}
-if (-not $healthy) { Write-Err "Resolver did not become healthy at $healthUrl"; exit 3 }
-Write-Ok "Resolver healthy"
-
-# ---------- 5) DB migrate (idempotent) ----------
-Write-Info "Migrating DB schema..."
-docker compose exec -T espn4cc sh -lc 'python3 /app/bin/db_migrate.py --db /app/data/eplus_vc.sqlite3' | Out-Null
-if ($LASTEXITCODE) { Write-Err "db_migrate.py failed"; exit 4 }
-$tables = (docker compose exec -T espn4cc sh -lc 'sqlite3 /app/data/eplus_vc.sqlite3 ".tables"')
-Write-Ok ("Tables: {0}" -f $tables)
-
-# ---------- 6) Ingest 72h (GET-only) ----------
-Write-Info "Ingesting 72h from ESPN Watch Graph..."
-$ingOut = docker compose exec -T espn4cc sh -lc 'python3 /app/bin/ingest_watch_graph_all_to_db.py --db /app/data/eplus_vc.sqlite3 --days 3 --tz America/New_York' 2>&1
-$ingOut | Write-Host
-if ($ingOut -notmatch 'Ingested \d+ airings') {
-    Write-Err "Ingest did not report counts - check WATCH_API_KEY and network"
-}
-
-# ---------- 7) Build plan + write outputs ----------
-Write-Info "Building plan + writing XMLTV/M3U..."
-docker compose exec -T espn4cc sh -lc 'python3 /app/bin/build_plan.py --db /app/data/eplus_vc.sqlite3 --valid-hours 72 --min-gap-mins 30 --align 30 --lanes 40 --tz America/New_York' | Write-Host
-docker compose exec -T espn4cc sh -lc 'python3 /app/bin/xmltv_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/epg.xml' | Write-Host
-docker compose exec -T espn4cc sh -lc "python3 /app/bin/m3u_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/playlist.m3u --resolver-base http://${LanIp}:${Port} --cc-host ${LanIp} --cc-port ${CCPort}" | Write-Host
-Write-Ok "EPG/M3U written"
-
-# ---------- 8) Final tests ----------
-# EPG: download -> count <programme>
-Write-Info "Re-check XMLTV (fresh read, expect ~5749)"
-$xmlPath = Join-Path $PWD "epg.xml"
-Invoke-WebRequest ("http://" + $LanIp + ":" + $Port + "/out/epg.xml") -UseBasicParsing -OutFile $xmlPath
-$xml = Get-Content $xmlPath -Raw
-$progCount = ([regex]::Matches($xml,'<programme')).Count
-Write-Host ("{0} programmes found" -f $progCount) -ForegroundColor Green
-
-# M3U: download -> preview
-Write-Info "Re-check M3U (preview first ~600 chars)"
-$m3uPath = Join-Path $PWD "playlist.m3u"
-Invoke-WebRequest ("http://" + $LanIp + ":" + $Port + "/playlist.m3u") -UseBasicParsing -OutFile $m3uPath
-$m3u = Get-Content $m3uPath -Raw
-$preview = $m3u.Substring(0, [Math]::Min(600, $m3u.Length))
-Write-Host $preview -ForegroundColor Gray
-
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Ok "DONE"
-Write-Host ("Health   : " + $healthUrl) -ForegroundColor Cyan
-Write-Host ("XMLTV    : http://" + $LanIp + ":" + $Port + "/out/epg.xml") -ForegroundColor Cyan
-Write-Host ("M3U      : http://" + $LanIp + ":" + $Port + "/playlist.m3u") -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Green
+<#  bootstrap_verified.ps1 - Windows Docker quickstart for ESPN4CC4C     * Creates data/logs/out     * Writes clean .env (UTF-8 no BOM, LF)     * Starts container and waits for /health     * Migrates DB, ingests 72h, builds EPG+M3U     * Runs two final tests (EPG count + M3U preview)#>param(  [Parameter(Mandatory=$true)][string]$LanIp,  [int]$Port   = 8094,  [int]$CCPort = 5589)# ---------- Helpers ----------function Write-Info ($msg) { Write-Host "[INFO] $msg" -ForegroundColor Cyan }function Write-Ok   ($msg) { Write-Host "[ OK ] $msg" -ForegroundColor Green }function Write-Err  ($msg) { Write-Host "[ERR ] $msg" -ForegroundColor Red }# ---------- 0) Sanity ----------if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {    Write-Err "Docker Desktop / docker CLI not found in PATH"; exit 1}$env:COMPOSE_PROJECT_NAME = "espn4cc"# ---------- 1) Folders ----------@(".\data",".\logs",".\out") | ForEach-Object {    if (-not (Test-Path $_)) { New-Item -ItemType Directory -Force -Path $_ | Out-Null }}Write-Ok "Ensured ./data ./logs ./out"# ---------- 2) .env (UTF-8 no BOM, LF) ----------$envPath = ".env"# Keep existing key if present$existingKey = ""if (Test-Path $envPath) {    $raw = Get-Content $envPath -Raw    if ($raw -match "(?m)^WATCH_API_KEY=(.*)$") { $existingKey = $Matches[1].Trim() }}if ([string]::IsNullOrWhiteSpace($existingKey)) {    $existingKey = "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"    Write-Info "Using default WATCH_API_KEY"}$envContent = @"# --- Service ---PORT=$PortTZ=America/New_York# --- Container paths (bind mounts map host -> /app/*) ---DB=/app/data/eplus_vc.sqlite3OUT=/app/outLOGS=/app/logsVC_M3U_PATH=/app/out/playlist.m3u# --- Planner tunables ---VALID_HOURS=72LANES=40ALIGN=30MIN_GAP_MINS=30# --- Resolver base URL (LAN reachable; do NOT use 127.0.0.1) ---VC_RESOLVER_BASE_URL=http://${LanIp}:${Port}# --- Chrome Capture integration ---CC_HOST=$LanIpCC_PORT=$CCPortM3U_GROUP_TITLE=ESPN+ VC# --- ESPN Watch API (public per project notes) ---WATCH_API_KEY=$existingKey"@# Normalize newlines and save as UTF-8 no BOM$envContent = $envContent -replace "`r`n", "`n" -replace "`r","`n"[IO.File]::WriteAllText($envPath, $envContent, [Text.UTF8Encoding]::new($false))Write-Ok ".env written (LF, no BOM)"# ---------- 3) Start container ----------Write-Info "Starting container..."docker compose up -d --force-recreate | Out-Nullif ($LASTEXITCODE) { Write-Err "docker compose up failed"; exit 2 }# ---------- 4) Health wait ----------$healthUrl = "http://${LanIp}:${Port}/health"Write-Info "Waiting for health at $healthUrl"$healthy = $falsefor ($i=0; $i -lt 60; $i++) {    try {        $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3        if ($r.StatusCode -eq 200 -and $r.Content -like '*"ok":true*') { $healthy = $true; break }    } catch { Start-Sleep -Milliseconds 500 }    Start-Sleep -Seconds 1}if (-not $healthy) { Write-Err "Resolver did not become healthy at $healthUrl"; exit 3 }Write-Ok "Resolver healthy"# ---------- 5) DB migrate (idempotent) ----------Write-Info "Migrating DB schema..."docker compose exec -T espn4cc sh -lc 'python3 /app/bin/db_migrate.py --db /app/data/eplus_vc.sqlite3' | Out-Nullif ($LASTEXITCODE) { Write-Err "db_migrate.py failed"; exit 4 }$tables = (docker compose exec -T espn4cc sh -lc 'sqlite3 /app/data/eplus_vc.sqlite3 ".tables"')Write-Ok ("Tables: {0}" -f $tables)# ---------- 6) Ingest 72h (GET-only) ----------Write-Info "Ingesting 72h from ESPN Watch Graph..."$ingOut = docker compose exec -T espn4cc sh -lc 'python3 /app/bin/ingest_watch_graph_all_to_db.py --db /app/data/eplus_vc.sqlite3 --days 3 --tz America/New_York' 2>&1$ingOut | Write-Hostif ($ingOut -notmatch 'Ingested \d+ airings') {    Write-Err "Ingest did not report counts - check WATCH_API_KEY and network"}# ---------- 7) Build plan + write outputs ----------Write-Info "Building plan + writing XMLTV/M3U..."docker compose exec -T espn4cc sh -lc 'python3 /app/bin/build_plan.py --db /app/data/eplus_vc.sqlite3 --valid-hours 72 --min-gap-mins 30 --align 30 --lanes 40 --tz America/New_York' | Write-Hostdocker compose exec -T espn4cc sh -lc 'python3 /app/bin/xmltv_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/epg.xml' | Write-Hostdocker compose exec -T espn4cc sh -lc "python3 /app/bin/m3u_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/playlist.m3u --resolver-base http://${LanIp}:${Port} --cc-host ${LanIp} --cc-port ${CCPort}" | Write-HostWrite-Ok "EPG/M3U written"# ---------- 8) Final tests ----------# EPG: download -> count <programme>Write-Info "Re-check XMLTV (fresh read, expect ~5749)"$xmlPath = Join-Path $PWD "epg.xml"Invoke-WebRequest ("http://" + $LanIp + ":" + $Port + "/out/epg.xml") -UseBasicParsing -OutFile $xmlPath$xml = Get-Content $xmlPath -Raw$progCount = ([regex]::Matches($xml,'<programme')).CountWrite-Host ("{0} programmes found" -f $progCount) -ForegroundColor Green# M3U: download -> previewWrite-Info "Re-check M3U (preview first ~600 chars)"$m3uPath = Join-Path $PWD "playlist.m3u"Invoke-WebRequest ("http://" + $LanIp + ":" + $Port + "/playlist.m3u") -UseBasicParsing -OutFile $m3uPath$m3u = Get-Content $m3uPath -Raw$preview = $m3u.Substring(0, [Math]::Min(600, $m3u.Length))Write-Host $preview -ForegroundColor GrayWrite-Host ""Write-Host "========================================" -ForegroundColor GreenWrite-Ok "DONE"Write-Host ("Health   : " + $healthUrl) -ForegroundColor CyanWrite-Host ("XMLTV    : http://" + $LanIp + ":" + $Port + "/out/epg.xml") -ForegroundColor CyanWrite-Host ("M3U      : http://" + $LanIp + ":" + $Port + "/out/playlist.m3u") -ForegroundColor CyanWrite-Host "========================================" -ForegroundColor Green
