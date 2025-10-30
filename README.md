@@ -4,210 +4,222 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 
 ---
 
-## Highlights (what you get)
+## What You Need
 
-- **40 managed virtual channels** by default (configurable).
-- **FastAPI resolver** on `:8094` serving:
-  - `GET /out/epg.xml` (XMLTV)
-  - `GET /playlist.m3u` (M3U, Chrome Capture–ready URLs)
-  - `GET /health` (simple JSON `{ "ok": true }`)
-- **Idempotent DB schema migration** + plan builder (“sticky lanes”).
-- **Simple Windows + Linux onboarding** with ready-made bootstrap scripts.
-- **No proxies** (by design). **GET-only** sanity checks (no `HEAD`).
-- **Persistent bind mounts** for `data/`, `out/`, `logs/`.
+- **Docker Desktop** installed and running (Windows) or **Docker Engine** (Linux)
+- Your computer's **local IP address**
+- **Channels DVR** installed and accessible on your network
+- Outbound HTTPS access to ESPN
 
----
+**Port Used:** `8094/tcp`
 
-## Requirements
+## Installation — Windows
 
-- Docker Engine 20.10+
-- Docker Compose v2
-- A LAN‑reachable IP for the host (e.g., `192.168.86.80`)
-- Channels DVR (configured to ingest external XMLTV/M3U)
-- (Optional) Chrome Capture at `http://<LAN-IP>:5589` for smoother playback
-- Outbound HTTPS to ESPN (for the ingest job)
+### Step 1: Download the Project
+1. Go to **https://github.com/kineticman/ESPN4CC4C**
+2. Click the green **"Code"** button
+3. Click **"Download ZIP"**
+4. Extract the ZIP file to a location like `C:\ESPN4CC4C` or your Desktop
+5. Remember where you put this folder
 
-> **Ports exposed**: `8094/tcp`
+### Step 2: Find Your Computer's IP Address
+1. Press `Windows Key + R`, type `cmd`, and press Enter
+2. In the command prompt, type `ipconfig` and press Enter
+3. Look for **"IPv4 Address"** under your active network adapter
+   - Example: `192.168.1.100` or `10.0.0.50`
+   - Note: This is NOT `127.0.0.1`
+4. Write down this IP address
 
----
+### Step 3: Run the Bootstrap Script
+1. Navigate to the extracted `ESPN4CC4C` folder
+2. Right-click on **`windowsbootstrap.ps1`**
+3. Select **"Run with PowerShell"**
+   - If you don't see this option, hold Shift while right-clicking and choose "Open PowerShell window here", then run `.\windowsbootstrap.ps1`
+4. When prompted, enter your IP address from Step 2
+5. Press Enter and wait 1-2 minutes while it sets everything up
 
-## Quick Start — Windows (Docker Desktop)
+The script will:
+- Create necessary folders (`data`, `logs`, `out`)
+- Configure your environment
+- Start the Docker container
+- Build the initial channel guide
 
-> Tested on PowerShell 5+ (Windows 10/11). Uses a hardened bootstrap that fixes common Windows pitfalls (CRLF, BOM, env propagation, health gating).
-
-1) **Clone or unzip** this repo on your Windows host, then open **PowerShell** in the project folder.
-
-2) **Run the Windows bootstrap** (replace `192.168.86.80` with your LAN IP):
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force
-.\windowsbootstrap.ps1 -LanIp 192.168.86.80
+### Step 4: Verify Installation
+Open a web browser and navigate to (using your IP):
+```
+http://192.168.1.100:8094/health
 ```
 
-What it does:
-- Creates `./data`, `./logs`, `./out` if missing.
-- Writes/repairs `.env` (UTF‑8 **no BOM**, LF line endings).
-- Starts the container and waits for `GET /health` to be ok.
-- Runs schema migration; builds plan; writes fresh **`out/epg.xml`** + **`out/playlist.m3u`**.
+You should see: `{"ok":true}`
 
-**Sanity checks (PowerShell)**
-```powershell
-# Health
-Invoke-WebRequest http://192.168.86.80:8094/health -UseBasicParsing | % Content
-
-# XMLTV count (save first, then read raw)
-$xmlPath = "$PWD\out\epg.xml"
-Invoke-WebRequest http://192.168.86.80:8094/out/epg.xml -UseBasicParsing -OutFile $xmlPath
-$xml = Get-Content $xmlPath -Raw
-([regex]::Matches($xml,'<programme')).Count    # expect a big number (~5750)
-
-# M3U preview
-$m3uPath = "$PWD\out\playlist.m3u"
-Invoke-WebRequest http://192.168.86.80:8094/playlist.m3u -UseBasicParsing -OutFile $m3uPath
-$m3u = Get-Content $m3uPath -Raw
-$m3u.Substring(0, [Math]::Min(600, $m3u.Length))  # expect chrome://<IP>:5589/stream?.../vc/<lane>
-```
-
-> If your **container logs** ever show `/app/.env: line 1: ... command not found`, that usually means a **UTF‑8 BOM** or **CRLF** snuck in. The bootstrap script already fixes this; you can re-run it safely.
+**Success!** Continue to "Add to Channels DVR" below.
 
 ---
 
-## Quick Start — Linux (Compose)
+### Windows Troubleshooting
 
+**Script won't run / Execution policy error:**
+- Right-click `windowsbootstrap.ps1` and select "Run with PowerShell"
+- If prompted about execution policy, choose "Yes" or "Run anyway"
+
+**Can't see the `.ps1` extension:**
+- In File Explorer, go to View → Show → File name extensions
+
+**Health check fails:**
+- Verify Docker Desktop is running (whale icon in system tray)
+- In Docker Desktop, go to Containers and confirm `espn4cc` is running
+- Check that port 8094 isn't blocked by your firewall
+
+**Container shows as "Exited":**
+- Open Docker Desktop → Containers
+- Click on `espn4cc` to view logs for error messages
+- Try clicking the restart button
+
+---
+
+## Installation — Linux
+
+### Step 1: Download the Project
 ```bash
-# 1) Clone this repo
-git clone https://github.com/<you>/ESPN4CC4C.git
+git clone https://github.com/kineticman/ESPN4CC4C.git
 cd ESPN4CC4C
+```
 
-# 2) Create .env from example (edit LAN IPs as needed)
+Or download the ZIP from GitHub if you don't have git installed.
+
+### Step 2: Find Your IP Address
+```bash
+hostname -I | awk '{print $1}'
+```
+Note the output (e.g., `192.168.1.100`)
+
+### Step 3: Configure Environment
+```bash
 cp .env.example .env
-# then edit .env with your values (see “ENV reference” below)
+nano .env
+```
 
-# 3) Start
+Update these two lines with your IP address:
+```
+VC_RESOLVER_BASE_URL=http://192.168.1.100:8094
+CC_HOST=192.168.1.100
+```
+
+Save with `Ctrl+X`, then `Y`, then `Enter`
+
+### Step 4: Start the Service
+```bash
 docker compose up -d
-
-# 4) Wait for health OK (GET-only)
-curl -s http://<LAN-IP>:8094/health
-
-# 5) Sanity
-curl -s http://<LAN-IP>:8094/out/epg.xml | grep -c '<programme'
-curl -s http://<LAN-IP>:8094/playlist.m3u | head -n 6
 ```
 
-> Linux notes: use **LF** line endings in `.env`. No `HEAD` checks; use `GET`. Do **not** configure proxies for ESPN endpoints.
-
----
-
-## Channels DVR Setup
-
-- **XMLTV URL**: `http://<LAN-IP>:8094/out/epg.xml`
-- **M3U URL**: `http://<LAN-IP>:8094/playlist.m3u`
-
-Group/title examples are included; Channels will map the lanes (`eplus1…eplus40`) into a lineup you can favorite/rename.
-
----
-
-## ENV reference (.env)
-
-A **minimal, polished** set of keys you likely care about. Everything else has sane defaults.
-
-```dotenv
-# --- Service ---
-PORT=8094
-TZ=America/New_York   # use a canonical IANA TZ
-
-# --- Container paths ---
-DB=/app/data/eplus_vc.sqlite3
-OUT=/app/out
-LOGS=/app/logs
-VC_M3U_PATH=/app/out/playlist.m3u
-
-# --- Planner tunables ---
-VALID_HOURS=72
-LANES=40
-ALIGN=30
-MIN_GAP_MINS=30
-
-# --- Resolver base URL (LAN-reachable) ---
-VC_RESOLVER_BASE_URL=http://192.168.86.80:8094
-
-# --- Chrome Capture (optional but recommended) ---
-CC_HOST=192.168.86.80
-CC_PORT=5589
-M3U_GROUP_TITLE=ESPN+ VC
-
-# --- ESPN Watch API key (project allows sharing; not secret) ---
-WATCH_API_KEY=0dbf88e8-cc6d-41da-aa83-18b5c630bc5c
-```
-
-**Important:**
-- Keep `.env` **UTF‑8 (no BOM)** + **LF** line endings on Windows too (the Windows bootstrap takes care of this).
-- **Never** use HTTP proxies for ESPN endpoints.
-- Our health + sanity checks use **GET-only** (no `HEAD`).
-
----
-
-## Common operations
-
-**See logs**
-```powershell
-# Windows
-docker compose logs --tail=200 espn4cc
-```
+Wait 30 seconds, then verify:
 ```bash
-# Linux
-docker compose logs --tail=200 espn4cc
+curl http://192.168.1.100:8094/health
 ```
 
-**Rebuild plan & outputs manually (inside container)**
+Expected response: `{"ok":true}`
+
+---
+
+## Add to Channels DVR
+
+Once the service is running, configure Channels DVR to use your new virtual channels:
+
+1. Open **Channels DVR Settings**
+2. Navigate to **Sources** → **XMLTV** or **TVE Sources**
+3. Add the following URLs (replace `192.168.1.100` with your actual IP):
+
+**XMLTV Guide Data:**
+```
+http://192.168.1.100:8094/out/epg.xml
+```
+
+**M3U Playlist:**
+```
+http://192.168.1.100:8094/playlist.m3u
+```
+
+4. Save and allow Channels DVR to refresh
+
+You should now see 40 ESPN+ virtual channels (`eplus1` through `eplus40`) in your channel lineup with guide data populated.
+
+---
+
+## Optional: Chrome Capture Integration
+
+For improved streaming reliability, you can install [Chrome Capture](https://github.com/fancybits/chrome-capture-for-channels) on the same host at port `5589`.
+
+The M3U playlist is pre-configured to use Chrome Capture if available. If not installed, streams will resolve directly through the built-in resolver.
+
+---
+
+## FAQ
+
+**How many channels do I get?**  
+40 channels by default (`eplus1` through `eplus40`). Configurable via `LANES` in `.env`.
+
+**How often does the guide update?**  
+Automatically rebuilds based on your configuration. Default window is 72 hours of programming.
+
+**Where are files stored?**
+- Database: `data/eplus_vc.sqlite3`
+- Guide (XMLTV): `out/epg.xml`
+- Channels (M3U): `out/playlist.m3u`
+- Logs: `logs/`
+
+**Something not working?**
+1. Verify Docker is running
+2. Check `http://YOUR-IP:8094/health` returns `{"ok":true}`
+3. Review container logs in Docker Desktop
+4. Ensure port 8094 isn't blocked by firewall
+
+---
+
+## Technical Details (For Advanced Users)
+
+### Default Settings
+- **Port**: 8094
+- **Channels**: 40 (configurable via `LANES` in `.env`)
+- **Guide window**: 72 hours (configurable via `VALID_HOURS`)
+- **Timezone**: America/New_York (change `TZ` in `.env`)
+
+### Rebuild Guide Manually
 ```bash
-docker compose exec -T espn4cc sh -c '
-  : "${DB:=/app/data/eplus_vc.sqlite3}"; : "${TZ:=America/New_York}";
-  : "${VALID_HOURS:=72}"; : "${LANES:=40}"; : "${ALIGN:=30}"; : "${MIN_GAP_MINS:=30}";
-  python3 /app/bin/build_plan.py --db "$DB" --valid-hours "$VALID_HOURS" --min-gap-mins "$MIN_GAP_MINS" --align "$ALIGN" --lanes "$LANES" --tz "$TZ";
-  python3 /app/bin/xmltv_from_plan.py --db "$DB" --out /app/out/epg.xml;
-  : "${VC_RESOLVER_BASE_URL:=http://127.0.0.1:8094}"; : "${CC_HOST:=127.0.0.1}"; : "${CC_PORT:=5589}";
-  python3 /app/bin/m3u_from_plan.py --db "$DB" --out /app/out/playlist.m3u --resolver-base "$VC_RESOLVER_BASE_URL" --cc-host "$CC_HOST" --cc-port "$CC_PORT"
+docker compose exec espn4cc sh -c '
+  python3 /app/bin/build_plan.py --db /app/data/eplus_vc.sqlite3 --valid-hours 72;
+  python3 /app/bin/xmltv_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/epg.xml;
+  python3 /app/bin/m3u_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/playlist.m3u
 '
 ```
 
-**Force recreate container**
-```powershell
+### View Logs
+```bash
+docker compose logs --tail=200 espn4cc
+```
+
+### Force Restart
+```bash
+docker compose down
 docker compose up -d --force-recreate
 ```
 
 ---
 
-## Troubleshooting (battle‑tested)
-
-- **`.env` BOM / CRLF**: If you see `/app/.env: line 1: ... command not found`, fix encoding/line endings. The Windows bootstrap script already does this.
-- **Health fails**: Ensure port `8094` isn’t blocked and the container is `Up (healthy)`.
-- **No events** after ingest: verify `WATCH_API_KEY` is present in the container `env`, and outbound HTTPS to ESPN works.
-- **TZ mistakes** cause ingest to fail: must be a valid IANA TZ (e.g., `America/New_York`).
-- **Symlink project name warning** from Compose is harmless.
-- **Chrome Capture integration**: If you don’t run CC, the M3U still works (URLs will still resolve through the resolver).
-
----
-
-## File layout
+## Project Structure
 
 ```
 ESPN4CC4C/
-├─ bin/                      # planner & generators
-├─ data/                     # SQLite (persisted)
-├─ logs/                     # rotated logs
-├─ out/                      # epg.xml + playlist.m3u
-├─ docker-compose.yml
-├─ .env                      # your environment (UTF-8 no BOM)
-├─ windowsbootstrap.ps1
-└─ README.md
+├─ bin/                      # Python scripts that build the guide
+├─ data/                     # SQLite database (persisted)
+├─ logs/                     # Log files
+├─ out/                      # epg.xml + playlist.m3u (what Channels DVR reads)
+├─ docker-compose.yml        # Docker configuration
+├─ .env                      # Your settings (IP addresses, etc)
+├─ windowsbootstrap.ps1      # Windows installer script
+└─ README.md                 # This file
 ```
 
 ---
 
-## Notes & Policy
 
-- **No proxies** will ever be used for ESPN endpoints (project policy).
-- All validation checks use **GET** (no `HEAD`).
-- Keep changes on a branch and PR into `main` when stable.
-
-Enjoy! If something feels clunky, open an issue with your logs + what you expected to see.
+**Enjoy!** If something's confusing, open an issue and tell us what you expected to see versus what happened.
