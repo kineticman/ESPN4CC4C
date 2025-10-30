@@ -104,7 +104,7 @@ down:  ; docker compose down
 build: ; docker compose build
 verify:; ./espn4cc_verify.sh 192.168.86.72 8094
 logs:  ; docker compose logs -f --tail=100
-cycle: ; docker compose exec espn4cc /app/update_schedule.sh
+cycle: ; docker compose exec espn4cc /app/bin/refresh_in_container.sh
 # Docker targets end
 
 .PHONY: up down build logs verify cycle
@@ -113,4 +113,4 @@ down:   ; docker compose down
 build:  ; docker compose up -d --build
 logs:   ; docker compose logs -f --tail=120
 verify: ; ./espn4cc_verify.sh 192.168.86.72 8094
-cycle:  ; docker compose exec espn4cc /app/update_schedule.sh
+cycle:  ; docker compose exec espn4cc /app/bin/refresh_in_container.sh

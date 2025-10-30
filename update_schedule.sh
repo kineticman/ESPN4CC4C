@@ -55,10 +55,12 @@ docker compose exec -T espn4cc bash -lc '
   set -e
   : "${DB:=/app/data/eplus_vc.sqlite3}"
   : "${TZ:=America/New_York}"
+  : "${LANES:=40}"
   mkdir -p /app/data /app/out /app/logs
   [ -f "$DB" ] || : > "$DB"
   if [ -x /app/bin/db_migrate.py ]; then
-    python3 /app/bin/db_migrate.py --db "$DB" || true
+    # Idempotent; also normalizes legacy epoch/text columns
+    python3 /app/bin/db_migrate.py --db "$DB" --lanes "$LANES" || true
   else
     echo "[warn] bin/db_migrate.py missing (container)."
   fi
@@ -116,9 +118,31 @@ docker compose exec -T espn4cc bash -lc '
     --cc-port "$CC_PORT"
 '
 
-
 # --- sanity (host) via epg_probe.sh ---
 bin/epg_probe.sh "${VC_RESOLVER_BASE_URL}" || true
+
+# --- next-12h summary (latest plan; normalizes epoch/text) ---
+echo "== sanity summary =="
+docker compose exec -T espn4cc bash -lc '
+  sqlite3 /app/data/eplus_vc.sqlite3 "
+WITH latest AS (SELECT MAX(plan_id) pid FROM plan_slot),
+norm AS (
+  SELECT CASE
+           WHEN typeof(start_utc)=\"text\" THEN strftime(\"%s\",start_utc)
+           WHEN start_utc IS NOT NULL     THEN start_utc
+           ELSE starts_at
+         END AS s_epoch,
+         is_placeholder
+  FROM plan_slot, latest WHERE plan_slot.plan_id = latest.pid
+)
+SELECT
+  (SELECT COUNT(*) FROM norm WHERE s_epoch>=strftime(\"%s\",\"now\") AND s_epoch<strftime(\"%s\",\"now\",\"+12 hours\")) AS total_12h,
+  (SELECT COUNT(*) FROM norm WHERE is_placeholder=0 AND s_epoch>=strftime(\"%s\",\"now\") AND s_epoch<strftime(\"%s\",\"now\",\"+12 hours\")) AS real_12h,
+  (SELECT COUNT(*) FROM norm WHERE is_placeholder=1 AND s_epoch>=strftime(\"%s\",\"now\") AND s_epoch<strftime(\"%s\",\"now\",\"+12 hours\")) AS placeholders_12h;"
+' || true
+
+echo "== first non-placeholder title =="
+grep -m1 -A1 -B2 -F "<title>" "$HOST_OUT/epg.xml" || true
 
 # Provenance
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"

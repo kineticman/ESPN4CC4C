@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# ESPN4CC4C in-container refresh: daily at 02:00
+0 2 * * * root /app/bin/refresh_in_container.sh >> /app/logs/schedule.log 2>&1
+# weekly VACUUM (Sun 03:17)
+17 3 * * 0 root sqlite3 /app/data/eplus_vc.sqlite3 'VACUUM;' >> /app/logs/schedule.log 2>&1

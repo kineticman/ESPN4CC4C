@@ -11,29 +11,40 @@ fi
 [ -f "/app/.env" ] && set -a && . /app/.env && set +a
 : "${PORT:=8094}"
 : "${TZ:=America/New_York}"
-: "${SCHEDULE_HOURS:=6}"
+: "${ENABLE_CRON:=1}"   # set to 0 to disable in-container scheduling
 
 # --- ensure app dirs ---
 mkdir -p /app/data /app/out /app/logs
 
-# --- timezone + cron only if we actually have perms (root images) ---
-if [ "$(id -u)" = "0" ]; then
-  # time
-  if [ -w /etc/localtime ] && [ -w /etc/timezone ]; then
-    ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime || true
-    echo "$TZ" > /etc/timezone || true
-  fi
+# --- timezone ---
+if [ -w /etc/localtime ] && [ -w /etc/timezone ] && [ -n "${TZ}" ]; then
+  ln -sf "/usr/share/zoneinfo/${TZ}" /etc/localtime || true
+  echo "${TZ}" > /etc/timezone || true
+fi
 
-  # cron
-  if [ -d /var/spool/cron/crontabs ] && [ -w /var/spool/cron/crontabs ]; then
+# --- in-container cron (self-refresh) ---
+if [ "${ENABLE_CRON}" = "1" ] && command -v cron >/dev/null 2>&1; then
+  # If a packaged cron file exists, use it; otherwise install a sane default (daily 02:00)
+  if [ -f /etc/cron.d/espn4cc ]; then
+    chmod 0644 /etc/cron.d/espn4cc || true
+    crontab /etc/cron.d/espn4cc || true
+  else
+    # default schedule if none was baked into the image
     {
-      echo "0 */${SCHEDULE_HOURS} * * * /app/update_schedule.sh >> /app/logs/schedule.log 2>&1"
-      echo "17 3 * * 0 sqlite3 /app/data/eplus_vc.sqlite3 'VACUUM;'"
-    } > /var/spool/cron/crontabs/root || true
-
-    command -v cron >/dev/null 2>&1 && cron || true
+      echo 'SHELL=/bin/bash'
+      echo 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+      echo '0 2 * * * root /app/bin/refresh_in_container.sh >> /app/logs/schedule.log 2>&1'
+      echo "17 3 * * 0 root sqlite3 /app/data/eplus_vc.sqlite3 'VACUUM;' >> /app/logs/schedule.log 2>&1"
+    } > /etc/cron.d/espn4cc
+    chmod 0644 /etc/cron.d/espn4cc || true
+    crontab /etc/cron.d/espn4cc || true
   fi
+
+  echo "[entrypoint] starting cron..."
+  /usr/sbin/cron || true
+else
+  echo "[entrypoint] cron disabled or not available; ENABLE_CRON=${ENABLE_CRON}"
 fi
 
 # --- run API ---
-exec python3 -m uvicorn bin.vc_resolver:app --host 0.0.0.0 --port "$PORT"
+exec python3 -m uvicorn bin.vc_resolver:app --host 0.0.0.0 --port "${PORT}"
