@@ -22,7 +22,7 @@ services:
       - CC_HOST=${CC_HOST:-127.0.0.1}     # host ONLY (no port)
       - CC_PORT=${CC_PORT:-5589}
       - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
-      - WATCH_API_KEY=${WATCH_API_KEY:-}
+      - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
     ports:
       - "${PORT:-8094}:${PORT:-8094}"
     volumes:
