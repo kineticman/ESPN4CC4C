@@ -29,3 +29,20 @@
 - fix(resolver): route collision on /channels (split DB vs XMLTV list)
 - fix(resolver): add missing imports (JSONResponse, RedirectResponse, HTMLResponse)
 - chore: env alignment (DB path), tidy OUT_DIR handling
+
+## v3.97 — 2025-10-31
+- Ops: bind-mount cron schedule into container under `/etc/cron.d/espn4cc`
+- Ensure cron.d file has `root:root 0644` so Debian cron honors it
+- Daily 02:00 refresh + weekly VACUUM included by default
+- Health/sanity checks retained (GET-only), no proxies
+
+## v3.97 — 2025-10-31
+- Ops: bind-mount cron schedule into container under `/etc/cron.d/espn4cc`
+- Ensure cron.d file has `root:root 0644` so Debian cron honors it
+- Daily 02:00 refresh + weekly VACUUM included by default
+- Health/sanity checks retained (GET-only), no proxies
+## v3.97 — 2025-10-31
+- Ops: bind-mount cron schedule into container under `/etc/cron.d/espn4cc`
+- Ensure cron.d file has `root:root 0644` so Debian cron honors it
+- Daily 02:00 refresh + weekly VACUUM included by default
+- Health/sanity checks retained (GET-only), no proxies
