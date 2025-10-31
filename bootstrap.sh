@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-GIT_REF="${GIT_REF:-v3.7}"
+GIT_REF="${GIT_REF:-v3.8}"
 set -euo pipefail
 
 # --- Always run from repo root ---
