@@ -1,79 +1,17 @@
-# Python / build
-__pycache__/
-*.pyc
-
-# Local artifacts
-.env
-dist/
-archive/
-*.tar.gz
-*.zip
-
-# Runtime outputs
-data/*.sqlite3
-data/*-*.sqlite3
-logs/*
-out/*.xml
-out/*.m3u
-
-# runtime/state
-.env
-out/
-logs/
-data/
-__pycache__/
-*.pyc
-*.sqlite3
-*.db
-*.log
-*.gz
-*.tar
-*.zip
-*.coverage
-.pytest_cache/
-
-# SQLite sidecars (runtime)
-data/*.sqlite3*
-.env
-docker-compose.override.yml
-*.bak.*
-RELEASE_NOTES_*.md
-# --- ephemeral ---
-__pycache__/
-*.py[cod]
-*.bak.*
-out/db_inspect.tgz
-out/db_inspect_*/
-logs/*.log
-logs/*.json
-logs/*.jsonl
-# keep release artifacts; ignore local outputs
-out/backups/epg_*.xml
-out/epg.xml
-out/playlist.m3u
-out/virtual_channels.m3u
-bootstrap.ps1
-# --- backups & local junk ---
-*.bak
-*.bak.*
-*.backup
-*.backup.*
-*.old
-*~
-.env.backup*
-# keep examples but ignore real env files
-.env
-.env.*
-!env.example
-!.env.example
-env.windows.example
 # Generated / runtime
 /out/
-/logs/*.log
+/logs/*
 /data/*.sqlite3*
+*.pyc
+__pycache__/
+
 # Local backups/archives
 *_backups_*/
-# Stray bundles
+*.bak
+*.bak.*
+archive/
+
+# Bundles
 *.tgz
 /dist/*.zip
 /dist/*.zip.sha256
