@@ -67,3 +67,13 @@ bootstrap.ps1
 !env.example
 !.env.example
 env.windows.example
+# Generated / runtime
+/out/
+/logs/*.log
+/data/*.sqlite3*
+# Local backups/archives
+*_backups_*/
+# Stray bundles
+*.tgz
+/dist/*.zip
+/dist/*.zip.sha256
