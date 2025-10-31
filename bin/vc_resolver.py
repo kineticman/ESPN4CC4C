@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import json
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 import os, sqlite3, datetime as dt, traceback
@@ -303,3 +303,33 @@ def playlist_m3u():
         return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
     return Response("# not found\n", status_code=404, media_type="text/plain")
 
+
+def _load_channels_from_xmltv(xml_path):
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.parse(xml_path).getroot()
+        return [{"id": c.get("id"), "name": (c.findtext("display-name") or "").strip()} for c in root.findall("channel")]
+    except Exception:
+        return []
+
+@app.get("/channels")
+def channels_json():
+    xml = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "epg.xml"))
+    if not os.path.exists(xml):
+        return Response("[]\n", media_type="application/json")
+    chans = _load_channels_from_xmltv(xml)
+    # try to read <lcn> if present
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.parse(xml).getroot()
+        lcn_map = {}
+        for c in root.findall("channel"):
+            cid = c.get("id")
+            lcn = c.findtext("lcn")
+            if cid and lcn: lcn_map[cid] = lcn
+        for c in chans:
+            if c["id"] in lcn_map: c["lcn"] = lcn_map[c["id"]]
+    except Exception:
+        pass
+    import json
+    return Response(json.dumps(chans), media_type="application/json")
