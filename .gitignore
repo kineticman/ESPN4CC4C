@@ -17,3 +17,7 @@ archive/
 /dist/*.zip.sha256
 .env
 .env.backup.*
+
+# Legacy INI (unused)
+/config.ini
+config/config.ini
