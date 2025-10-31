@@ -4,3 +4,8 @@
 # PowerShell scripts normalize as text (CRLF or LF OK)
 *.ps1 text
 bootstrap.ps1 text eol=lf
+archive/ export-ignore
+*_backups_*/ export-ignore
+*.bak export-ignore
+*.bak.* export-ignore
+bump_* export-ignore
