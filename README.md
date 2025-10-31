@@ -1,5 +1,8 @@
 # ESPN4CC4C — ESPN+ Virtual Channels for Channels DVR (Docker Edition)
 
+> Note: As of v3.97, INI config is removed. Use environment variables / .env only.
+
+
 ## Changelog
 See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
