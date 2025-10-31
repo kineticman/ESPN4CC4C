@@ -7,7 +7,7 @@ def get_version() -> str:
     Falls back to ENV ESPN4CC_VERSION, then a static string.
     """
     repo_root = pathlib.Path(__file__).resolve().parents[1]  # project root
-    tag_match = os.getenv("ESPN4CC_TAG_MATCH", r"v[0-9]*\.[0-9]*\.[0-9]*")  # semver only
+    tag_match = os.getenv("ESPN4CC_TAG_MATCH", r"v[0-9]+\.[0-9]+(\.[0-9]+)?" )  # semver only
     try:
         cmd = ["git","-C", str(repo_root), "describe", "--tags", "--long", "--dirty", "--always", "--match", tag_match]
         return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()

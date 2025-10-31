@@ -280,20 +280,20 @@ def slate_page():
 
 @app.get("/epg.xml")
 def epg_xml():
-    """Latest XMLTV from out/virtual_channels.xml"""
-    path = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "virtual_channels.xml"))
+    """Latest XMLTV from out/epg.xml"""
+    path = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "epg.xml"))
     if os.path.exists(path):
         return FileResponse(path, media_type="application/xml")
     return Response("XMLTV not found", status_code=404, media_type="text/plain")
 
 @app.get("/playlist.m3u")
 def playlist_m3u():
-    """Latest M3U from out/virtual_channels.m3u"""
-    path = os.getenv("VC_M3U_PATH", os.path.join(OUT_DIR, "virtual_channels.m3u"))
-    if os.path.exists(path):
-        # Correct-ish MIME for M3U
-        return FileResponse(path, media_type="audio/x-mpegurl", filename="virtual_channels.m3u")
-    return Response("# not found\n", status_code=404, media_type="text/plain")
+    """Serve M3U: prefer VC_M3U_PATH; else /out/playlist.m3u."""
+    p = os.getenv("VC_M3U_PATH") or os.path.join(OUT_DIR, "playlist.m3u")
+    if os.path.exists(p):
+        return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
+    return Response("# not found
+", status_code=404, media_type="text/plain")
 
 @app.get("/playlist_cc.m3u")
 def playlist_cc_m3u(request: Request):
