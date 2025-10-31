@@ -19,3 +19,8 @@
 - Seed channels 20010+ (EPlus naming)
 - Env-driven M3U defaults (+ VC_M3U_PATH)
 - Guarded version import
+
+## v3.95 — 2025-10-30
+- fix(resolver): route collision on /channels (split DB vs XMLTV list)
+- fix(resolver): add missing imports (JSONResponse, RedirectResponse, HTMLResponse)
+- chore: env alignment (DB path), tidy OUT_DIR handling
