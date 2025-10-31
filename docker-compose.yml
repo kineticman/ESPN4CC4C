@@ -30,6 +30,7 @@ services:
       - ./logs:/app/logs
       - ./out:/app/out
       - ./:/app
+      - ./tools/cron/espn4cc:/etc/cron.d/espn4cc:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8094/health"]
       interval: 10s
