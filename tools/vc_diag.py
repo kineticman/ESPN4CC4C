@@ -259,7 +259,7 @@ def xml_channel_count(xml_path: str) -> Optional[int]:
 
 # ---------- main ----------
 def main():
-    default_proj = "/home/brad/Projects/ESPN4CC"
+    default_proj = "/home/brad/Projects/ESPN4CC4C"
     default_env  = os.path.join(default_proj, ".env.plan")
     env = load_env_file(default_env)
 
