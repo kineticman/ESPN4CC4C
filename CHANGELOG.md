@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.96] - 2025-10-31
+- Fix: standby /vc/* 500 due to missing RedirectResponse import
+- Docs: cleaned CC4C fullscreen helper guide
+
+
 ## v0.1.1 — 2025-10-30
 - Windows + Linux bootstrap verified
 - README updated (Windows onboarding + notes)

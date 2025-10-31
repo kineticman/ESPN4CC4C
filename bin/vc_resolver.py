@@ -2,7 +2,7 @@
 import json
 from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
 
@@ -278,7 +278,7 @@ def slate_page():
         return FileResponse(path, media_type="text/html")
     return HTMLResponse("<h1>Stand By</h1><p>No live event scheduled.</p>")
 
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 import os
 
 # Ensure OUT_DIR
