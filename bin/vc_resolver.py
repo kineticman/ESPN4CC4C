@@ -2,7 +2,7 @@
 import json
 from fastapi import FastAPI, Response, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, Response
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
 
@@ -278,13 +278,22 @@ def slate_page():
         return FileResponse(path, media_type="text/html")
     return HTMLResponse("<h1>Stand By</h1><p>No live event scheduled.</p>")
 
+from fastapi.responses import FileResponse, Response
+import os
+
+# Ensure OUT_DIR
+try:
+    OUT_DIR
+except NameError:
+    OUT_DIR = os.getenv("OUT","./out")
+
 @app.get("/epg.xml")
 def epg_xml():
     """Latest XMLTV from out/epg.xml"""
     path = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "epg.xml"))
     if os.path.exists(path):
         return FileResponse(path, media_type="application/xml")
-    return Response("XMLTV not found", status_code=404, media_type="text/plain")
+    return Response("# not found\n", status_code=404, media_type="text/plain")
 
 @app.get("/playlist.m3u")
 def playlist_m3u():
@@ -292,56 +301,5 @@ def playlist_m3u():
     p = os.getenv("VC_M3U_PATH") or os.path.join(OUT_DIR, "playlist.m3u")
     if os.path.exists(p):
         return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
-    return Response("# not found
-", status_code=404, media_type="text/plain")
+    return Response("# not found\n", status_code=404, media_type="text/plain")
 
-@app.get("/playlist_cc.m3u")
-def playlist_cc_m3u(request: Request):
-    """
-    Dynamic M3U that respects CC_HOST/CC_PORT and VC_RESOLVER_BASE_URL.
-    Builds entries from the channel table (active=1).
-    """
-    try:
-        vc_base = _vc_base_from_request(request)
-        lines = ["#EXTM3U"]
-        with db() as conn:
-            rows = conn.execute(
-                "SELECT id AS channel_id, chno, name FROM channel WHERE active=1 ORDER BY chno"
-            ).fetchall()
-            for r in rows:
-                cid  = r["channel_id"]
-                chno = r["chno"]
-                name = r["name"] or cid
-                tvg_id   = cid
-                tvg_name = name
-                group    = M3U_GROUP_TITLE
-                vc_url   = f"{vc_base}/vc/{cid}"
-                line_url = _wrap_for_cc(vc_url, vc_base=vc_base)
-                lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{tvg_name}" tvg-chno="{chno}" group-title="{group}",{tvg_name}')
-                lines.append(line_url)
-
-        body = "\n".join(lines) + "\n"
-        return Response(content=body, media_type="audio/x-mpegurl")
-    except Exception as e:
-        return Response(f"# error: {e}\n", status_code=500, media_type="text/plain")
-@app.head("/slate")
-def slate_head():
-    return Response(status_code=200)
-
-# --- compact compatibility route for /playlist.m3u ---
-from fastapi import APIRouter, Response
-from fastapi.responses import FileResponse, RedirectResponse
-import os
-
-router = APIRouter()
-
-@router.get("/playlist.m3u")
-def playlist_root():
-  # Serve the file from /out, or redirect if mounted as static
-  out_path = os.environ.get("OUT", "/app/out")
-  p = os.path.join(out_path, "playlist.m3u")
-  if os.path.exists(p):
-      return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
-  return RedirectResponse(url="/out/playlist.m3u", status_code=307)
-
-app.include_router(router)
