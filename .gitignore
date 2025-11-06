@@ -1,19 +1,26 @@
-# Generated / runtime
-/out/
-/logs/*
-/data/*.sqlite3*
-*.pyc
+# Python
 __pycache__/
+*.pyc
+*.pyo
 
-# Local backups/archives
-*_backups_*/
-*.bak
-*.bak.*
-archive/
+# venvs
+.venv/
+venv/
 
-# Bundles
+# OS
+.DS_Store
+
+# Build / dist
+dist/
+*.zip
 *.tgz
-/dist/*.zip
-/dist/*.zip.sha256
-.env
-.env.backup.*
+*.sha256
+SHA256SUMS.txt
+
+# Runtime outputs
+data/
+logs/
+out/
+
+# Local overrides
+docker-compose.override.yml

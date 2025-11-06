@@ -1,5 +1,9 @@
 # ESPN4CC4C — ESPN+ Virtual Channels for Channels DVR (Docker Edition)
 
+## API Endpoints
+
+- See [docs/api/endpoints.md](docs/api/endpoints.md) for `/whatson` and `/whatson_all`.
+
 Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all packaged in a single Docker service.
 
 ---
