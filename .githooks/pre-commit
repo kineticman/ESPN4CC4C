@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# List critical paths here
+CRITICAL_REGEX='^(config/|bin/|sql/|tools/|static/|contrib/|docker-entrypoint\.sh$)'
+
+# Any staged deletions of critical paths?
+if git diff --cached --name-status | awk '$1=="D"{print $2}' | grep -E "$CRITICAL_REGEX" -q; then
+  echo "[BLOCK] Commit blocks deletion of critical files/dirs." >&2
+  git diff --cached --name-status | awk '$1=="D"{print "  - "$2}'
+  echo "Edit .githooks/pre-commit to allow, or unstage those deletions." >&2
+  exit 1
+fi

@@ -3,6 +3,7 @@ import json
 from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, HTMLResponse
 import os, sqlite3, datetime as dt, traceback
 from typing import Optional
 
@@ -278,9 +279,6 @@ def slate_page():
         return FileResponse(path, media_type="text/html")
     return HTMLResponse("<h1>Stand By</h1><p>No live event scheduled.</p>")
 
-from fastapi.responses import FileResponse, RedirectResponse, Response
-import os
-
 # Ensure OUT_DIR
 try:
     OUT_DIR
@@ -333,3 +331,189 @@ def channels_json():
         pass
     import json
     return Response(json.dumps(chans), media_type="application/json")
+
+
+@app.get("/whatson/{lane}", response_class=JSONResponse)
+def whatson(lane: str, at: Optional[str] = None, format: Optional[str] = None):
+    # Normalize time like other endpoints
+    def _parse_at(val: Optional[str]) -> dt.datetime:
+        if not val:
+            return dt.datetime.now(dt.timezone.utc)
+        v = val.strip().replace(" ", "T")
+        try:
+            if v.endswith("Z"):
+                return dt.datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if "+" in v[10:] or "-" in v[10:]:
+                return dt.datetime.fromisoformat(v)
+            return dt.datetime.fromisoformat(v).replace(tzinfo=dt.timezone.utc)
+        except Exception:
+            try:
+                return dt.datetime.fromisoformat(v).replace(tzinfo=dt.timezone.utc)
+            except Exception:
+                return dt.datetime.now(dt.timezone.utc)
+
+    when = _parse_at(at)
+    when_iso = when.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
+
+    # Normalize lane input; accept "10" or "eplus10"
+    lane_str = str(lane).strip()
+    num = None
+    if lane_str.lower().startswith("eplus") and lane_str[5:].isdigit():
+        num = int(lane_str[5:])
+    elif lane_str.isdigit():
+        num = int(lane_str)
+    normalized_lane = num if num is not None else lane_str
+
+    # Candidate channel_ids (supports DBs storing "eplus10" or "10")
+    candidates = []
+    if num is not None:
+        candidates = [f"eplus{num}", str(num)]
+    else:
+        candidates = [lane_str]
+
+    db_path = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"DB open failed: {e}"}, status_code=404)
+
+    try:
+        cur = conn.cursor()
+        # latest plan
+        cur.execute("SELECT MAX(id) FROM plan_run")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return JSONResponse({"ok": False, "error": "No plan_run rows"}, status_code=404)
+        plan_id = row[0]
+
+        # First attempt: IN (candidates)
+        placeholders = ",".join(["?"] * len(candidates))
+        cur.execute(
+            f"""
+            SELECT channel_id, kind, event_id
+            FROM plan_slot
+            WHERE plan_id = ?
+              AND channel_id IN ({placeholders})
+              AND start_utc <= ?
+              AND end_utc > ?
+            ORDER BY start_utc DESC
+            LIMIT 1
+            """,
+            (plan_id, *candidates, when_iso, when_iso),
+        )
+        hit = cur.fetchone()
+
+        # If nothing matched (e.g., DB stores bare numbers or different casing), try a fallback:
+        # derive a looser numeric from any candidate and try both text/int comparisons via CAST
+        if not hit and num is not None:
+            cur.execute(
+                """
+                SELECT channel_id, kind, event_id
+                FROM plan_slot
+                WHERE plan_id = ?
+                  AND (channel_id = ? OR channel_id = ? OR CAST(channel_id AS TEXT) = ?)
+                  AND start_utc <= ?
+                  AND end_utc > ?
+                ORDER BY start_utc DESC
+                LIMIT 1
+                """,
+                (plan_id, f"eplus{num}", num, str(num), when_iso, when_iso),
+            )
+            hit = cur.fetchone()
+
+        if not hit:
+            # Always return JSON so jq never errors
+            return JSONResponse({"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}, status_code=200)
+
+        _, kind, eid = hit
+        if kind == "event" and eid:
+            # Strip espn-watch prefix if present
+            if eid.startswith("espn-watch:"):
+                eid = eid[11:]
+            # format=txt -> return play_id only as text/plain
+            if (format or "").lower() == "txt":
+                play_id = eid.split(":", 1)[0]
+                return Response(content=play_id, media_type="text/plain", status_code=200)
+            return JSONResponse({"ok": True, "lane": normalized_lane, "event_uid": eid, "at": when_iso}, status_code=200)
+        else:
+            # No event -> 204 for txt (empty), JSON otherwise
+            if (format or "").lower() == "txt":
+                return Response(status_code=204)
+            return JSONResponse({"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}, status_code=200)
+    finally:
+        conn.close()
+@app.get("/whatson_all", response_class=JSONResponse)
+def whatson_all(at: Optional[str] = None):
+    def _to_lane_label(chid: str):
+        s = str(chid)
+        if s.lower().startswith("eplus") and s[5:].isdigit():
+            return int(s[5:])
+        if s.isdigit():
+            return int(s)
+        return s
+    # Return the ESPN UID for every lane at the requested time (default: now UTC).
+    # Response:
+    # { "ok": true, "at": "<utc-iso>", "items": [ {"lane": "eplus1", "event_uid": "..." | null}, ... ] }
+    def _parse_at(val: Optional[str]) -> dt.datetime:
+        if not val:
+            return dt.datetime.now(dt.timezone.utc)
+        v = val.strip().replace(" ", "T")
+        try:
+            if v.endswith("Z"):
+                return dt.datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if "+" in v[10:] or "-" in v[10:]:
+                return dt.datetime.fromisoformat(v)
+            return dt.datetime.fromisoformat(v).replace(tzinfo=dt.timezone.utc)
+        except Exception:
+            try:
+                return dt.datetime.fromisoformat(v).replace(tzinfo=dt.timezone.utc)
+            except Exception:
+                return dt.datetime.now(dt.timezone.utc)
+
+    when = _parse_at(at)
+    when_iso = when.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
+
+    db_path = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"DB open failed: {e}"}, status_code=404)
+
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(id) FROM plan_run")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return JSONResponse({"ok": False, "error": "No plan_run rows"}, status_code=404)
+        plan_id = row[0]
+
+        # Get all lanes that exist in this plan
+        cur.execute("SELECT DISTINCT channel_id FROM plan_slot WHERE plan_id = ?", (plan_id,))
+        lanes = [r[0] for r in cur.fetchall()]
+
+        # Get current slot per lane at 'when'
+        cur.execute(
+            """
+            SELECT channel_id, kind, event_id
+            FROM plan_slot
+            WHERE plan_id = ?
+              AND start_utc <= ?
+              AND end_utc   > ?
+            """,
+            (plan_id, when_iso, when_iso),
+        )
+        active = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+
+        items = []
+        def _sort_key(x):
+            lbl = _to_lane_label(x)
+            return (0, lbl) if isinstance(lbl, int) else (1, str(lbl).lower())
+        for lane in sorted(lanes, key=_sort_key):
+            kind, eid = active.get(lane, (None, None))
+            uid = (eid[11:] if (kind == "event" and eid and eid.startswith("espn-watch:")) else (eid if kind == "event" else None))
+            items.append({"lane": _to_lane_label(lane), "event_uid": uid})
+
+        return JSONResponse({"ok": True, "at": when_iso, "items": items}, status_code=200)
+    finally:
+        conn.close()
+
