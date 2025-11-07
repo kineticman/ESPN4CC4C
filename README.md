@@ -297,3 +297,4 @@ ESPN4CC4C/
 ---
 
 **Enjoy!** If something's confusing, open an issue and tell us what you expected to see versus what happened.
+- See: [whatson API guide](docs/api/whatson_api_doc.md)
