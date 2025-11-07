@@ -17,3 +17,9 @@ archive/
 /dist/*.zip.sha256
 .env
 .env.backup.*
+bootstrapbackup.sh
+bootstrap.sh.bak
+bump_to_v3_91.sh
+bump_to_v3_9.sh
+bump_v3_8_safe.sh
+espn4cc4c_mustdo_patch.sh
