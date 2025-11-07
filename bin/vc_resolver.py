@@ -188,8 +188,8 @@ def best_feed_for_event(conn: sqlite3.Connection, event_id: str, preferred_feed_
 def health():
     return {"ok": True, "ts": now_utc_iso()}
 
-@app.get("/channels")
-def channels():
+@app.get("/channels_db")
+def channels_db():
     try:
         with db() as conn:
             lanes = [
