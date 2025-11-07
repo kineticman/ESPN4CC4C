@@ -15,7 +15,6 @@ archive/
 *.tgz
 /dist/*.zip
 /dist/*.zip.sha256
-.env
 .env.backup.*
 bootstrapbackup.sh
 bootstrap.sh.bak

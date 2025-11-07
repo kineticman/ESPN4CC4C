@@ -10,7 +10,6 @@ backups/
 releases/
 
 # state/artifacts
-.env
 .env.backup.*
 data/
 out/
