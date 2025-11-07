@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 import json
-from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse, Response
-from fastapi.responses import JSONResponse, HTMLResponse
-import os, sqlite3, datetime as dt, traceback
+import os
+import sqlite3
+import datetime as dt
+import traceback
 from typing import Optional
-
 from urllib.parse import quote
+
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import (
+    FileResponse,
+    RedirectResponse,
+    Response,
+    JSONResponse,
+    HTMLResponse,
+)
 
 # --- ChromeCapture config ---
 CC_HOST = os.getenv("CC_HOST")          # defaults to resolver host if not set
@@ -42,13 +50,15 @@ def _wrap_for_cc(vc_url: str, vc_base: str) -> str:
 
 
 # --- slate support ---
-SLATE_TMPL = os.getenv('VC_SLATE_URL_TEMPLATE', '/slate?lane={lane}')
+SLATE_TMPL = os.getenv("VC_SLATE_URL_TEMPLATE", "/slate?lane={lane}")
+
 def _slate_url(lane: str) -> str:
     tmpl = SLATE_TMPL
     try:
-        return tmpl.format(lane=lane) if tmpl else ''
+        return tmpl.format(lane=lane) if tmpl else ""
     except Exception:
-        return ''
+        return ""
+
 def slate_redirect(lane: str):
     url = _slate_url(lane)
     return RedirectResponse(url, status_code=302) if url else None
@@ -60,49 +70,49 @@ try:
     )
 except Exception:
     CFG_SLATE_URL = ""
+
 app = FastAPI()
 
-
-
-
+# === Middlewares to fill in slate on /vc/*/debug and redirect /vc/<lane> 404 to slate ===
 @app.middleware("http")
 async def _debug_slate_mid(request: Request, call_next):
     resp = await call_next(request)
     p = request.url.path
-    if resp.status_code == 200 and p.startswith('/vc/') and p.endswith('/debug'):
+    if resp.status_code == 200 and p.startswith("/vc/") and p.endswith("/debug"):
         try:
-            lane = p.split('/')[2]
-            # Capture body bytes from StreamingResponse/JSONResponse
-            body = b''
-            if hasattr(resp, 'body_iterator') and resp.body_iterator is not None:
+            lane = p.split("/")[2]
+            # Capture body bytes
+            body = b""
+            if hasattr(resp, "body_iterator") and resp.body_iterator is not None:
                 async for chunk in resp.body_iterator:
                     body += chunk
-            elif hasattr(resp, 'body') and isinstance(resp.body, (bytes, bytearray)):
+            elif hasattr(resp, "body") and isinstance(resp.body, (bytes, bytearray)):
                 body = bytes(resp.body)
             if body:
-                data = json.loads(body.decode('utf-8'))
-                if isinstance(data, dict) and not data.get('slate'):
-                    data['slate'] = _slate_url(lane)
+                data = json.loads(body.decode("utf-8"))
+                if isinstance(data, dict) and not data.get("slate"):
+                    data["slate"] = _slate_url(lane)
                     new = JSONResponse(content=data, status_code=resp.status_code)
-                    # Preserve headers except length (will be recalculated)
                     for k, v in resp.headers.items():
-                        if k.lower() != 'content-length':
+                        if k.lower() != "content-length":
                             new.headers[k] = v
                     return new
         except Exception:
             pass
     return resp
+
 @app.middleware("http")
 async def _slate_mid(request: Request, call_next):
     resp = await call_next(request)
     p = request.url.path
-    if resp.status_code == 404 and p.startswith('/vc/') and p.count('/') == 2:
-        lane = p.split('/')[2]
+    if resp.status_code == 404 and p.startswith("/vc/") and p.count("/") == 2:
+        lane = p.split("/")[2]
         url = _slate_url(lane)
         if url:
             return RedirectResponse(url, status_code=302)
     return resp
-import os
+
+# --- Paths / directories ---
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 OUT_DIR = os.path.join(BASE_DIR, "out")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -115,7 +125,7 @@ except Exception:
     # In case directories are missing in a fresh checkout; mounts are optional
     pass
 
-
+# --- DB helpers ---
 DB_DEFAULT = "data/eplus_vc.sqlite3"
 db_path = os.environ.get("VC_DB", DB_DEFAULT)  # global for debug/logs
 
@@ -134,15 +144,13 @@ def parse_at(value: Optional[str]) -> str:
         return now_utc_iso()
     v = value.strip()
     if v.endswith("Z"):
-        return v.replace("Z","+00:00")
+        return v.replace("Z", "+00:00")
     try:
-        # let fromisoformat parse offsets; treat naive as UTC
         t = dt.datetime.fromisoformat(v)
         if t.tzinfo is None:
             t = t.replace(tzinfo=dt.timezone.utc)
         return t.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
     except Exception:
-        # fallback: try space separated "YYYY-mm-dd HH:MM:SS"
         try:
             t = dt.datetime.strptime(v, "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
             return t.isoformat()
@@ -157,7 +165,7 @@ def current_slot(conn: sqlite3.Connection, lane: str, at_iso: str):
     q = """
       SELECT s.channel_id, s.start_utc, s.end_utc, s.event_id, s.kind, s.preferred_feed_id
         FROM plan_slot s
-       WHERE s.plan_id=(SELECT MAX(plan_id) FROM plan_slot)
+       WHERE s.plan_id = (SELECT MAX(plan_id) FROM plan_slot)
          AND s.channel_id = ?
          AND s.start_utc <= ? AND s.end_utc > ?
        ORDER BY s.start_utc DESC
@@ -171,29 +179,31 @@ def best_feed_for_event(conn: sqlite3.Connection, event_id: str, preferred_feed_
     if preferred_feed_id:
         r = conn.execute(
             "SELECT url FROM feeds WHERE id=? AND event_id=? LIMIT 1",
-            (preferred_feed_id, event_id)
+            (preferred_feed_id, event_id),
         ).fetchone()
         if r and r["url"]:
             return r["url"]
     r = conn.execute(
         "SELECT url FROM feeds WHERE event_id=? AND url IS NOT NULL ORDER BY is_primary DESC, id DESC LIMIT 1",
-        (event_id,)
+        (event_id,),
     ).fetchone()
     if r and r["url"]:
         return r["url"]
-    # no events.player_url in v2 schema, so no further fallback
     return None
 
+# --- Health ---
 @app.get("/health")
 def health():
     return {"ok": True, "ts": now_utc_iso()}
 
-@app.get("/channels_db")
+# --- Channels (DB-backed) ---
+@app.get("/channels_db", tags=["channels"], summary="DB-backed channel list", response_class=JSONResponse)
 def channels_db():
     try:
         with db() as conn:
             lanes = [
-                dict(row) for row in conn.execute(
+                dict(row)
+                for row in conn.execute(
                     "SELECT id AS channel_id, chno, name FROM channel WHERE active=1 ORDER BY chno"
                 ).fetchall()
             ]
@@ -201,6 +211,40 @@ def channels_db():
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+# --- XML helpers & channels (XMLTV-backed) ---
+def _load_channels_from_xmltv(xml_path):
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.parse(xml_path).getroot()
+        return [{"id": c.get("id"), "name": (c.findtext("display-name") or "").strip()} for c in root.findall("channel")]
+    except Exception:
+        return []
+
+@app.get("/channels", tags=["channels"], summary="XMLTV-backed channel list")
+def channels_xml():
+    """Reflects what the current EPG exposes (array of channels)."""
+    path = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "epg.xml"))
+    if not os.path.exists(path):
+        return []
+    chans = _load_channels_from_xmltv(path)
+    # enrich with <lcn> if present
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.parse(path).getroot()
+        lcn_map = {}
+        for c in root.findall("channel"):
+            cid = c.get("id")
+            lcn = (c.findtext("lcn") or "").strip()
+            if cid and lcn:
+                lcn_map[cid] = lcn
+        for c in chans:
+            if c["id"] in lcn_map:
+                c["lcn"] = lcn_map[c["id"]]
+    except Exception:
+        pass
+    return chans
+
+# --- VC endpoints ---
 @app.get("/vc/{lane}")
 def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None):
     try:
@@ -227,8 +271,6 @@ def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None)
 
 @app.get("/vc/{lane}/debug")
 def debug_lane(lane: str, at: Optional[str] = None):
-    _sl = _slate_url(lane)
-    slate_url = _slate_url(lane)
     info = {"lane": lane}
     try:
         at_iso = parse_at(at)
@@ -261,7 +303,7 @@ def debug_lane(lane: str, at: Optional[str] = None):
         info["error"] = str(outer)
         return JSONResponse(info, status_code=500)
 
-
+# --- Standby / Slate ---
 @app.get("/standby")
 def standby(lane: Optional[str] = None):
     """
@@ -279,11 +321,11 @@ def slate_page():
         return FileResponse(path, media_type="text/html")
     return HTMLResponse("<h1>Stand By</h1><p>No live event scheduled.</p>")
 
-# Ensure OUT_DIR
+# --- Artifacts: epg.xml / playlist.m3u ---
 try:
     OUT_DIR
 except NameError:
-    OUT_DIR = os.getenv("OUT","./out")
+    OUT_DIR = os.getenv("OUT", "./out")
 
 @app.get("/epg.xml")
 def epg_xml():
@@ -301,41 +343,25 @@ def playlist_m3u():
         return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
     return Response("# not found\n", status_code=404, media_type="text/plain")
 
-
-def _load_channels_from_xmltv(xml_path):
-    try:
-        import xml.etree.ElementTree as ET
-        root = ET.parse(xml_path).getroot()
-        return [{"id": c.get("id"), "name": (c.findtext("display-name") or "").strip()} for c in root.findall("channel")]
-    except Exception:
-        return []
-
-@app.get("/channels")
-def channels_json():
-    xml = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "epg.xml"))
-    if not os.path.exists(xml):
-        return Response("[]\n", media_type="application/json")
-    chans = _load_channels_from_xmltv(xml)
-    # try to read <lcn> if present
-    try:
-        import xml.etree.ElementTree as ET
-        root = ET.parse(xml).getroot()
-        lcn_map = {}
-        for c in root.findall("channel"):
-            cid = c.get("id")
-            lcn = c.findtext("lcn")
-            if cid and lcn: lcn_map[cid] = lcn
-        for c in chans:
-            if c["id"] in lcn_map: c["lcn"] = lcn_map[c["id"]]
-    except Exception:
-        pass
-    import json
-    return Response(json.dumps(chans), media_type="application/json")
-
-
+# --- whatson with deeplink support ---
 @app.get("/whatson/{lane}", response_class=JSONResponse)
-def whatson(lane: str, at: Optional[str] = None, format: Optional[str] = None):
-    # Normalize time like other endpoints
+def whatson(
+    lane: str,
+    at: Optional[str] = None,
+    format: Optional[str] = None,
+    include: Optional[str] = None,
+    deeplink: Optional[int] = None,
+    dynamic: Optional[int] = None,
+    param: Optional[str] = None,
+):
+    """
+    Returns the current ESPN event UID for a lane at time 'at' (default: now UTC).
+    New:
+      - include=deeplink (or include=1 / deeplink=1 / dynamic=1) => adds "deeplink_url" to JSON.
+      - param=deeplink_url&format=txt => returns just the deeplink URL (text/plain).
+      - format=txt (without param) => legacy short playId (before ':').
+    """
+    # Normalize time
     def _parse_at(val: Optional[str]) -> dt.datetime:
         if not val:
             return dt.datetime.now(dt.timezone.utc)
@@ -355,38 +381,37 @@ def whatson(lane: str, at: Optional[str] = None, format: Optional[str] = None):
     when = _parse_at(at)
     when_iso = when.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
 
-    # Normalize lane input; accept "10" or "eplus10"
+    # Accept "6" or "eplus6"
     lane_str = str(lane).strip()
-    num = None
-    if lane_str.lower().startswith("eplus") and lane_str[5:].isdigit():
-        num = int(lane_str[5:])
-    elif lane_str.isdigit():
-        num = int(lane_str)
+    num = int(lane_str[5:]) if (lane_str.lower().startswith("eplus") and lane_str[5:].isdigit()) else (int(lane_str) if lane_str.isdigit() else None)
     normalized_lane = num if num is not None else lane_str
+    candidates = [f"eplus{num}", str(num)] if num is not None else [lane_str]
 
-    # Candidate channel_ids (supports DBs storing "eplus10" or "10")
-    candidates = []
-    if num is not None:
-        candidates = [f"eplus{num}", str(num)]
-    else:
-        candidates = [lane_str]
+    # Flags for deeplink outputs
+    fmt = (format or "").lower()
+    want_deeplink_field = (isinstance(include, str) and include.lower() in ("deeplink", "1", "true")) or (deeplink == 1) or (dynamic == 1)
+    want_txt_deeplink = (param or "").lower() == "deeplink_url" and fmt == "txt"
+    want_txt_short    = (param or "").strip() == "" and fmt == "txt"
 
     db_path = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     except Exception as e:
+        if want_txt_deeplink or want_txt_short:
+            return Response(status_code=404)
         return JSONResponse({"ok": False, "error": f"DB open failed: {e}"}, status_code=404)
 
     try:
         cur = conn.cursor()
-        # latest plan
         cur.execute("SELECT MAX(id) FROM plan_run")
         row = cur.fetchone()
         if not row or row[0] is None:
+            if want_txt_deeplink or want_txt_short:
+                return Response(status_code=204)
             return JSONResponse({"ok": False, "error": "No plan_run rows"}, status_code=404)
         plan_id = row[0]
 
-        # First attempt: IN (candidates)
+        # Try exact IN first
         placeholders = ",".join(["?"] * len(candidates))
         cur.execute(
             f"""
@@ -403,8 +428,7 @@ def whatson(lane: str, at: Optional[str] = None, format: Optional[str] = None):
         )
         hit = cur.fetchone()
 
-        # If nothing matched (e.g., DB stores bare numbers or different casing), try a fallback:
-        # derive a looser numeric from any candidate and try both text/int comparisons via CAST
+        # Fallback: try numeric/CAST if needed
         if not hit and num is not None:
             cur.execute(
                 """
@@ -421,29 +445,54 @@ def whatson(lane: str, at: Optional[str] = None, format: Optional[str] = None):
             )
             hit = cur.fetchone()
 
+        # No current slot or placeholder
         if not hit:
-            # Always return JSON so jq never errors
-            return JSONResponse({"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}, status_code=200)
+            if want_txt_deeplink or want_txt_short:
+                return Response(status_code=204)
+            body = {"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}
+            if want_deeplink_field:
+                body["deeplink_url"] = None
+            return JSONResponse(body, status_code=200)
 
         _, kind, eid = hit
-        if kind == "event" and eid:
-            # Strip espn-watch prefix if present
-            if eid.startswith("espn-watch:"):
-                eid = eid[11:]
-            # format=txt -> return play_id only as text/plain
-            if (format or "").lower() == "txt":
-                play_id = eid.split(":", 1)[0]
-                return Response(content=play_id, media_type="text/plain", status_code=200)
-            return JSONResponse({"ok": True, "lane": normalized_lane, "event_uid": eid, "at": when_iso}, status_code=200)
-        else:
-            # No event -> 204 for txt (empty), JSON otherwise
-            if (format or "").lower() == "txt":
+        if not (kind == "event" and eid):
+            if want_txt_deeplink or want_txt_short:
                 return Response(status_code=204)
-            return JSONResponse({"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}, status_code=200)
+            body = {"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}
+            if want_deeplink_field:
+                body["deeplink_url"] = None
+            return JSONResponse(body, status_code=200)
+
+        # Strip espn-watch: prefix only; KEEP any :suffix
+        if eid.startswith("espn-watch:"):
+            eid = eid[11:]
+
+        # Build deeplink URL (full UID)
+        deeplink_full = f"sportscenter://x-callback-url/showWatchStream?playID={eid}"
+
+        # TXT modes
+        if want_txt_deeplink:
+            return Response(content=deeplink_full, media_type="text/plain", status_code=200)
+        if want_txt_short:
+            play_id_short = eid.split(":", 1)[0]
+            return Response(content=play_id_short, media_type="text/plain", status_code=200)
+
+        # JSON body
+        body = {"ok": True, "lane": normalized_lane, "event_uid": eid, "at": when_iso}
+        if want_deeplink_field:
+            body["deeplink_url"] = deeplink_full
+        return JSONResponse(body, status_code=200)
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+# --- whatson_all (+ optional deeplinks) ---
 @app.get("/whatson_all", response_class=JSONResponse)
-def whatson_all(at: Optional[str] = None):
+def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplink: Optional[int] = None, dynamic: Optional[int] = None):
+    want_deeplink_field = (isinstance(include, str) and include.lower() in ("deeplink", "1", "true")) or (deeplink == 1) or (dynamic == 1)
+
     def _to_lane_label(chid: str):
         s = str(chid)
         if s.lower().startswith("eplus") and s[5:].isdigit():
@@ -451,9 +500,7 @@ def whatson_all(at: Optional[str] = None):
         if s.isdigit():
             return int(s)
         return s
-    # Return the ESPN UID for every lane at the requested time (default: now UTC).
-    # Response:
-    # { "ok": true, "at": "<utc-iso>", "items": [ {"lane": "eplus1", "event_uid": "..." | null}, ... ] }
+
     def _parse_at(val: Optional[str]) -> dt.datetime:
         if not val:
             return dt.datetime.now(dt.timezone.utc)
@@ -508,12 +555,15 @@ def whatson_all(at: Optional[str] = None):
         def _sort_key(x):
             lbl = _to_lane_label(x)
             return (0, lbl) if isinstance(lbl, int) else (1, str(lbl).lower())
+
         for lane in sorted(lanes, key=_sort_key):
             kind, eid = active.get(lane, (None, None))
             uid = (eid[11:] if (kind == "event" and eid and eid.startswith("espn-watch:")) else (eid if kind == "event" else None))
-            items.append({"lane": _to_lane_label(lane), "event_uid": uid})
+            item = {"lane": _to_lane_label(lane), "event_uid": uid}
+            if want_deeplink_field:
+                item["deeplink_url"] = (f"sportscenter://x-callback-url/showWatchStream?playID={uid}" if uid else None)
+            items.append(item)
 
         return JSONResponse({"ok": True, "at": when_iso, "items": items}, status_code=200)
     finally:
         conn.close()
-
