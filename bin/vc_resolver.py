@@ -15,6 +15,7 @@ from fastapi.responses import (
     Response,
     JSONResponse,
     HTMLResponse,
+    PlainTextResponse,
 )
 
 # --- ChromeCapture config ---
@@ -343,6 +344,42 @@ def playlist_m3u():
         return FileResponse(p, media_type="application/x-mpegURL", filename="playlist.m3u")
     return Response("# not found\n", status_code=404, media_type="text/plain")
 
+
+# --- simple deeplink endpoint (text/plain) ---
+@app.get("/deeplink/{lane}", response_class=PlainTextResponse, tags=["vc"])
+def deeplink_lane(lane: str, at: Optional[str] = None):
+    # 200 with body = deeplink string
+    # 204 if no deeplink available (no current event)
+    try:
+        at_iso = parse_at(at or "")
+        lane_str = str(lane).strip()
+        if lane_str.lower().startswith("eplus") and lane_str[5:].isdigit():
+            num = int(lane_str[5:])
+        elif lane_str.isdigit():
+            num = int(lane_str)
+        else:
+            num = None
+        candidates = [f"eplus{num}", str(num)] if num is not None else [lane_str]
+
+        with db() as conn:
+            slot = None
+            for cand in candidates:
+                slot = current_slot(conn, cand, at_iso)
+                if slot:
+                    break
+
+            if not slot or slot.get("kind") != "event" or not slot.get("event_id"):
+                return PlainTextResponse("", status_code=204)
+
+            eid = slot.get("event_id") or ""
+            if eid.startswith("espn-watch:"):
+                eid = eid[11:]  # strip prefix, keep full playID suffix
+
+            eid_short = (str(eid).split(':', 1)[0] if eid else None)
+            deeplink_full = (f"sportscenter://x-callback-url/showWatchStream?playID={eid_short}" if eid_short else None)
+            return PlainTextResponse(deeplink_full, status_code=200)
+    except Exception:
+        return PlainTextResponse("", status_code=204)
 # --- whatson with deeplink support ---
 @app.get("/whatson/{lane}", response_class=JSONResponse)
 def whatson(
@@ -388,19 +425,29 @@ def whatson(
     candidates = [f"eplus{num}", str(num)] if num is not None else [lane_str]
 
     # Flags for deeplink outputs
-    want_txt_deeplink_full = (param or "").lower() == "deeplink_url_full" and fmt == "txt"
-    want_txt_short        = (param or "").lower() in ("deeplink_url","deeplink_url_short") and fmt == "txt"
-    want_deeplink_full_json = (isinstance(include, str) and include.lower() in ("deeplink_full","full"))
     fmt = (format or "").lower()
+    param_l = (param or "").lower() if isinstance(param, str) else ""
+
+    # JSON controls
+    want_deeplink_full_json = False
     want_deeplink_field = (isinstance(include, str) and include.lower() in ("deeplink", "1", "true")) or (deeplink == 1) or (dynamic == 1)
-    want_txt_deeplink = (param or "").lower() == "deeplink_url" and fmt == "txt"
-    want_txt_short    = (param or "").strip() == "" and fmt == "txt"
+
+    # TXT output modes:
+    # - format=txt&param=deeplink_url_full        -> full deeplink (playID with suffix)
+    # - format=txt&param=deeplink_url[_short]     -> short deeplink (playID before ':')
+    # - format=txt                                -> short playID only (legacy)
+    want_txt_deeplink_full  = (param_l == "deeplink_url" and fmt == "txt")
+    want_txt_deeplink_short = (param_l in ("deeplink_url","deeplink_url_short","deeplink_url") and fmt == "txt")
+    want_txt_playid_short   = (param_l == "" and fmt == "txt")
+    
+
+    
 
     db_path = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     except Exception as e:
-        if want_txt_deeplink or want_txt_short:
+        if want_txt_deeplink_short or want_txt_playid_short:
             return Response(status_code=404)
         return JSONResponse({"ok": False, "error": f"DB open failed: {e}"}, status_code=404)
 
@@ -409,7 +456,7 @@ def whatson(
         cur.execute("SELECT MAX(id) FROM plan_run")
         row = cur.fetchone()
         if not row or row[0] is None:
-            if want_txt_deeplink or want_txt_short:
+            if want_txt_deeplink_short or want_txt_playid_short:
                 return Response(status_code=204)
             return JSONResponse({"ok": False, "error": "No plan_run rows"}, status_code=404)
         plan_id = row[0]
@@ -450,20 +497,16 @@ def whatson(
 
         # No current slot or placeholder
         if not hit:
-            if want_txt_deeplink or want_txt_short:
+            if want_txt_deeplink_short or want_txt_playid_short:
                 return Response(status_code=204)
-            body = {"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}
-            if want_deeplink_field:
-                body["deeplink_url"] = None
+            body = {"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso, "deeplink_url": None}
             return JSONResponse(body, status_code=200)
 
         _, kind, eid = hit
         if not (kind == "event" and eid):
-            if want_txt_deeplink or want_txt_short:
+            if want_txt_deeplink_short or want_txt_playid_short:
                 return Response(status_code=204)
-            body = {"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso}
-            if want_deeplink_field:
-                body["deeplink_url"] = None
+            body = {"ok": True, "lane": normalized_lane, "event_uid": None, "at": when_iso, "deeplink_url": None}
             return JSONResponse(body, status_code=200)
 
         # Strip espn-watch: prefix only; KEEP any :suffix
@@ -471,23 +514,22 @@ def whatson(
             eid = eid[11:]
 
         # Build deeplink URL (full UID)
-        deeplink_full = f"sportscenter://x-callback-url/showWatchStream?playID={eid}"
+        eid_short = (str(eid).split(':', 1)[0] if eid else None)
+        deeplink_full = (f"sportscenter://x-callback-url/showWatchStream?playID={eid_short}" if eid_short else None)
 
-        play_id_short   = eid.split(":", 1)[0]
+        play_id_short   = eid.split(':', 1)[0]
         deeplink_short  = f"sportscenter://x-callback-url/showWatchStream?playID={play_id_short}"
         # TXT modes
         if want_txt_deeplink_full:
-            return Response(content=deeplink_full, media_type="text/plain", status_code=200)
-        if want_txt_deeplink or want_txt_short:
             return Response(content=deeplink_short, media_type="text/plain", status_code=200)
-        if want_txt_short:
-            play_id_short = eid.split(":", 1)[0]
+        if want_txt_deeplink_short:
+            return Response(content=deeplink_short, media_type="text/plain", status_code=200)
+        if want_txt_playid_short:
+            play_id_short = eid.split(':', 1)[0]
             return Response(content=play_id_short, media_type="text/plain", status_code=200)
 
         # JSON body
-        body = {"ok": True, "lane": normalized_lane, "event_uid": eid, "at": when_iso}
-        if want_deeplink_field:
-            body["deeplink_url"] = (deeplink_full if want_deeplink_full_json else deeplink_short)
+        body = {"ok": True, "lane": normalized_lane, "event_uid": eid, "at": when_iso, "deeplink_url": deeplink_short}
         return JSONResponse(body, status_code=200)
     finally:
         try:
@@ -499,7 +541,7 @@ def whatson(
 @app.get("/whatson_all", response_class=JSONResponse)
 def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplink: Optional[int] = None, dynamic: Optional[int] = None):
     want_deeplink_field = (isinstance(include, str) and include.lower() in ("deeplink", "1", "true")) or (deeplink == 1) or (dynamic == 1)
-    want_deeplink_full_json = (isinstance(include, str) and include.lower() in ("deeplink_full","full"))
+    want_deeplink_full_json = False
 
     def _to_lane_label(chid: str):
         s = str(chid)
@@ -567,9 +609,9 @@ def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplin
         for lane in sorted(lanes, key=_sort_key):
             kind, eid = active.get(lane, (None, None))
             uid = (eid[11:] if (kind == "event" and eid and eid.startswith("espn-watch:")) else (eid if kind == "event" else None))
-            item = {"lane": _to_lane_label(lane), "event_uid": uid}
-            if want_deeplink_field:
-                item["deeplink_url"] = ((f"sportscenter://x-callback-url/showWatchStream?playID={uid}" if want_deeplink_full_json else f"sportscenter://x-callback-url/showWatchStream?playID={str(uid).split(\":\",1)[0]}") if uid else None)
+            eid_short = (str(eid).split(':', 1)[0] if eid else None)
+            short = (str(uid).split(':', 1)[0] if uid else None)
+            item = {"lane": _to_lane_label(lane), "event_uid": uid, "deeplink_url": (f"sportscenter://x-callback-url/showWatchStream?playID={short}" if short else None)}
             items.append(item)
 
         return JSONResponse({"ok": True, "at": when_iso, "items": items}, status_code=200)
