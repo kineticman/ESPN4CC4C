@@ -6,6 +6,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# --- Preflight: required commands & files ---
+need() { command -v "$1" >/dev/null 2>&1 || { echo "[FATAL] Missing command: $1" >&2; exit 1; }; }
+need docker
+if ! docker compose version >/dev/null 2>&1; then
+  echo "[FATAL] Docker Compose v2 not available. Update Docker Desktop." >&2
+  exit 1
+fi
+[[ -f Dockerfile ]] || { echo "[FATAL] Dockerfile not found in $PWD" >&2; exit 1; }
+[[ -f docker-compose.yml ]] || { echo "[FATAL] docker-compose.yml not found in $PWD" >&2; exit 1; }
+[[ -f docker-entrypoint.sh ]] || { echo "[FATAL] docker-entrypoint.sh missing at repo root (did cleanup move/delete it?)" >&2; exit 1; }
+
 # --- Load host-side .env (LAN, PORT, etc.) ---
 if [ -f ".env" ]; then
   set -a; . ./.env; set +a
@@ -42,9 +53,6 @@ docker compose build --pull
 echo "== docker compose: up =="
 docker compose up -d
 
-echo "== boot delay: sleeping 20s before health checks =="
-sleep 20
-
 echo "== readiness wait on ${VC_RESOLVER_BASE_URL}/health =="
 for i in {1..60}; do
   if curl -fsS "${VC_RESOLVER_BASE_URL}/health" >/dev/null; then
@@ -68,8 +76,15 @@ docker compose exec -T espn4cc bash -lc '
   fi
 '
 
-echo "== first run: generating plan + outputs via update_schedule.sh =="
-./update_schedule.sh || true
+echo "== first run: generating plan + outputs (inline) == "
+docker compose exec -T espn4cc bash -lc '
+  set -e
+  DB="${DB:-/app/data/eplus_vc.sqlite3}"
+  python3 /app/bin/ingest_watch_graph_all_to_db.py --db "$DB" --days "${DAYS:-3}" || true
+  python3 /app/bin/build_plan.py --db "$DB" --valid-hours "${VALID_HOURS:-72}" --min-gap-mins "${MIN_GAP_MINS:-30}" --align 30 || true
+  python3 /app/bin/xmltv_from_plan.py --db "$DB" --out /app/out/epg.xml || true
+  python3 /app/bin/m3u_from_plan.py --db "$DB" --out /app/out/playlist.m3u --resolver-base "${VC_RESOLVER_BASE_URL}" --cc-host "${CC_HOST:-127.0.0.1}" --cc-port "${CC_PORT:-8089}" || true
+'
 
 # ---------- Final tests & summary ----------
 echo ""
