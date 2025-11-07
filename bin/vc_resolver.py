@@ -388,6 +388,9 @@ def whatson(
     candidates = [f"eplus{num}", str(num)] if num is not None else [lane_str]
 
     # Flags for deeplink outputs
+    want_txt_deeplink_full = (param or "").lower() == "deeplink_url_full" and fmt == "txt"
+    want_txt_short        = (param or "").lower() in ("deeplink_url","deeplink_url_short") and fmt == "txt"
+    want_deeplink_full_json = (isinstance(include, str) and include.lower() in ("deeplink_full","full"))
     fmt = (format or "").lower()
     want_deeplink_field = (isinstance(include, str) and include.lower() in ("deeplink", "1", "true")) or (deeplink == 1) or (dynamic == 1)
     want_txt_deeplink = (param or "").lower() == "deeplink_url" and fmt == "txt"
@@ -470,9 +473,13 @@ def whatson(
         # Build deeplink URL (full UID)
         deeplink_full = f"sportscenter://x-callback-url/showWatchStream?playID={eid}"
 
+        play_id_short   = eid.split(":", 1)[0]
+        deeplink_short  = f"sportscenter://x-callback-url/showWatchStream?playID={play_id_short}"
         # TXT modes
-        if want_txt_deeplink:
+        if want_txt_deeplink_full:
             return Response(content=deeplink_full, media_type="text/plain", status_code=200)
+        if want_txt_deeplink or want_txt_short:
+            return Response(content=deeplink_short, media_type="text/plain", status_code=200)
         if want_txt_short:
             play_id_short = eid.split(":", 1)[0]
             return Response(content=play_id_short, media_type="text/plain", status_code=200)
@@ -480,7 +487,7 @@ def whatson(
         # JSON body
         body = {"ok": True, "lane": normalized_lane, "event_uid": eid, "at": when_iso}
         if want_deeplink_field:
-            body["deeplink_url"] = deeplink_full
+            body["deeplink_url"] = (deeplink_full if want_deeplink_full_json else deeplink_short)
         return JSONResponse(body, status_code=200)
     finally:
         try:
@@ -492,6 +499,7 @@ def whatson(
 @app.get("/whatson_all", response_class=JSONResponse)
 def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplink: Optional[int] = None, dynamic: Optional[int] = None):
     want_deeplink_field = (isinstance(include, str) and include.lower() in ("deeplink", "1", "true")) or (deeplink == 1) or (dynamic == 1)
+    want_deeplink_full_json = (isinstance(include, str) and include.lower() in ("deeplink_full","full"))
 
     def _to_lane_label(chid: str):
         s = str(chid)
@@ -561,7 +569,7 @@ def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplin
             uid = (eid[11:] if (kind == "event" and eid and eid.startswith("espn-watch:")) else (eid if kind == "event" else None))
             item = {"lane": _to_lane_label(lane), "event_uid": uid}
             if want_deeplink_field:
-                item["deeplink_url"] = (f"sportscenter://x-callback-url/showWatchStream?playID={uid}" if uid else None)
+                item["deeplink_url"] = ((f"sportscenter://x-callback-url/showWatchStream?playID={uid}" if want_deeplink_full_json else f"sportscenter://x-callback-url/showWatchStream?playID={str(uid).split(\":\",1)[0]}") if uid else None)
             items.append(item)
 
         return JSONResponse({"ok": True, "at": when_iso, "items": items}, status_code=200)
