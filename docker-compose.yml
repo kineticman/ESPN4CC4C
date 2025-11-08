@@ -12,9 +12,9 @@ services:
       - PORT=${PORT:-8094}
       - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}
       - VC_RESOLVER_ORIGIN=${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}
-      - DB=${DB:-/app/data/eplus_vc.sqlite3}
-      - OUT=${OUT:-/app/out}
-      - LOGS=${LOGS:-/app/logs}
+      - DB=${DB:-./data/eplus_vc.sqlite3}
+      - OUT=${OUT:-./out}
+      - LOGS=${LOGS:-./logs}
       - VALID_HOURS=${VALID_HOURS:-72}
       - LANES=${LANES:-40}
       - ALIGN=${ALIGN:-30}
