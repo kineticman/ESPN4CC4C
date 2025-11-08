@@ -91,7 +91,8 @@ def fetch_channels(conn: sqlite3.Connection):
 def fetch_rows_latest_plan(conn: sqlite3.Connection):
     """
     Returns list of rows for the latest plan_id in plan_slot.
-    Each row should provide: channel_id, start_utc, end_utc, kind, title.
+    Each row should provide: channel_id, start_utc, end_utc, kind, title, sport, subtitle, summary.
+    PATCHED: JOINs with events table to get actual event titles and metadata.
     """
     row = conn.execute("SELECT MAX(plan_id) AS pid FROM plan_slot").fetchone()
     if not row or row["pid"] is None:
@@ -99,10 +100,19 @@ def fetch_rows_latest_plan(conn: sqlite3.Connection):
 
     pid = int(row["pid"])
     rows = conn.execute("""
-        SELECT channel_id, start_utc, end_utc, kind, title
-        FROM plan_slot
-        WHERE plan_id = ?
-        ORDER BY channel_id, start_utc
+        SELECT 
+            ps.channel_id, 
+            ps.start_utc, 
+            ps.end_utc, 
+            ps.kind,
+            COALESCE(e.title, ps.title) AS title,
+            e.sport,
+            e.subtitle,
+            e.summary
+        FROM plan_slot ps
+        LEFT JOIN events e ON ps.event_id = e.id
+        WHERE ps.plan_id = ?
+        ORDER BY ps.channel_id, ps.start_utc
     """, (pid,)).fetchall()
     return pid, rows
 
@@ -122,7 +132,7 @@ def write_channels(f, channels):
 def write_programmes(f, rows):
     """
     Write programme entries to XMLTV.
-    PATCHED: Added deduplication to prevent overlapping entries.
+    PATCHED: Added deduplication, enhanced metadata from events table.
     """
     seen = set()  # Track (channel_id, start, stop, title) to detect duplicates
     duplicates_skipped = 0
@@ -133,6 +143,26 @@ def write_programmes(f, rows):
         stop = iso_to_xmltv(r["end_utc"])
         kind = (r["kind"] or "").strip()
         title = r["title"] or ("Sports" if kind == "event" else "Stand By")
+        
+        # Get additional metadata from events table (sqlite3.Row objects)
+        sport = ""
+        subtitle = ""
+        summary = ""
+        
+        try:
+            sport = (r["sport"] or "").strip() if r["sport"] else ""
+        except (KeyError, IndexError):
+            pass
+        
+        try:
+            subtitle = (r["subtitle"] or "").strip() if r["subtitle"] else ""
+        except (KeyError, IndexError):
+            pass
+        
+        try:
+            summary = (r["summary"] or "").strip() if r["summary"] else ""
+        except (KeyError, IndexError):
+            pass
         
         # Skip entries with invalid timestamps
         if not start or not stop:
@@ -147,13 +177,35 @@ def write_programmes(f, rows):
 
         f.write(f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n')
         f.write(f'    <title>{escape(title)}</title>\n')
-        # Add ESPN4CC4C category only for actual events (not placeholders)
+        
+        # Add metadata for events only
         if kind == "event":
-            f.write('    <category>ESPN4CC4C</category>\n')
-        # minimal, clean — add <desc/> here if you want later
-        # tag live-ish events (optional): uncomment if you'd like a <live/> node for events
-        # if kind == "event":
-        #     f.write('    <live/>\n')
+            # Description - use summary if available, otherwise build from parts
+            if summary:
+                f.write(f'    <desc>{escape(summary)}</desc>\n')
+            elif subtitle or sport or title:
+                desc_parts = []
+                if sport:
+                    desc_parts.append(sport)
+                if subtitle:
+                    desc_parts.append(subtitle)
+                else:
+                    desc_parts.append(title)
+                desc = " — ".join(desc_parts)
+                f.write(f'    <desc>{escape(desc)}</desc>\n')
+            
+            # Categories
+            f.write('    <category>Sports</category>\n')
+            if sport:
+                f.write(f'    <category>{escape(sport)}</category>\n')
+            f.write('    <category>Sports Event</category>\n')
+            f.write('    <category>Live</category>\n')
+            f.write('    <category>ESPNCC4C</category>\n')
+            
+            # URL - construct from channel ID
+            url = f"http://192.168.86.80:8094/vc/{cid}"
+            f.write(f'    <url>{escape(url)}</url>\n')
+        
         f.write('  </programme>\n')
     
     if duplicates_skipped > 0:
