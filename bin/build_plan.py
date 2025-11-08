@@ -30,7 +30,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.2-sticky-patched"
+VERSION = "2.1.3-sticky-patched"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -261,7 +261,10 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
                 free_t = timelines[cid][-1][1] if timelines[cid] else start_dt_utc
                 if free_t < e["_t"]:
                     e_s = max(e["_s"], free_t)
-                    timelines[cid].append((e_s, e["_t"], e["id"], "event"))
+                    # PATCHED: Preserve event duration when delayed
+                    original_duration = e["_t"] - e["_s"]
+                    e_t = e_s + original_duration
+                    timelines[cid].append((e_s, e_t, e["id"], "event"))
                     if preferred is None and sticky_map.get(e["id"]) != cid:
                         sticky_map[e["id"]] = cid
                         new_sticky.append((e["id"], cid))
