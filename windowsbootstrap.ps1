@@ -1,3 +1,6 @@
+$BOOTSTRAP_VERSION = '4.6.1-win'
+Write-Host ("windowsbootstrap.ps1 v{0}  ({1})" -f $BOOTSTRAP_VERSION, $MyInvocation.MyCommand.Path)
+
 # ESPN4CC4C Windows bootstrap: build, run, first plan, and install in-container auto-refresh
 # Requires Docker Desktop (Linux engine). Runs entirely from repo root.
 $ErrorActionPreference = "Stop"
@@ -156,3 +159,42 @@ Write-Host ("XMLTV  : {0}/out/epg.xml" -f $VC_RESOLVER_BASE_URL)
 Write-Host ("M3U    : {0}/out/playlist.m3u" -f $VC_RESOLVER_BASE_URL)
 Write-Host ("Cron   : docker exec -it espn4cc sh -lc 'tail -f /app/logs/cron.log'")
 Write-Host "========================================"
+# === BOOTSTRAP HARDENING START ===
+# Fail fast & guardrails to prevent bash lines from being parsed by PowerShell.
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Invoke-InContainerBash {
+    param(
+        [Parameter(Mandatory)][string]$Script,
+        [string]$Container = 'espn4cc'
+    )
+    docker exec -i $Container bash -lc $Script
+}
+
+# Preflight: refuse to run if bash tokens appear in PS context (outside our bash runner).
+try {
+    $scriptPath = $MyInvocation.MyCommand.Path
+    $body = Get-Content -LiteralPath $scriptPath -Raw
+
+    # Strip allowed bash blocks (Invoke-InContainerBash -Script @'...bash...'@ or @"...bash"...@)
+    $sanitized = $body -replace "(?s)Invoke-InContainerBash\s*-Script\s*@'(.+?)'@", '' `
+                       -replace '(?s)Invoke-InContainerBash\s*-Script\s*@"(.+?)"@', ''
+
+    # Also treat explicit docker exec bash heredocs as allowed (best-effort)
+    $sanitized = $sanitized -replace '(?s)docker\s+exec[^\n]*\s(bash|sh)\s+-lc\s+@''(.+?)''@', ''
+    $sanitized = $sanitized -replace '(?s)docker\s+exec[^\n]*\s(bash|sh)\s+-lc\s+@"(.+?)"@', ''
+
+    $bad = @()
+    foreach ($pat in '\|\|','&&','2>/dev/null','\$\(') {
+        if ($sanitized -match $pat) { $bad += $pat }
+    }
+    if ($bad.Count) {
+        throw ("Found bash operators in PowerShell context: {0}. " +
+               "Move them into Invoke-InContainerBash -Script @'...bash...'@") -f ($bad -join ', ')
+    }
+} catch {
+    Write-Host "[HARDENING] $_" -ForegroundColor Red
+    exit 1
+}
+# === BOOTSTRAP HARDENING END ===
