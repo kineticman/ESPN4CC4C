@@ -1,4 +1,8 @@
 ## v4.1.0 — 2025-11-08
+- Placeholder/event overlap cleanup (truncate-or-drop)
+- Guarantees one active slot per channel at any time
+
+## v4.1.0 — 2025-11-08
 - EPG dup fix (no event segmentation)
 - DB-first LCN w/ config fallback
 - XML writer dedup safety net

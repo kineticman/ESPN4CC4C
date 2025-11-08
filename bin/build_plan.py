@@ -30,7 +30,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.0-sticky-patched"
+VERSION = "2.1.1-sticky-patched"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -303,6 +303,42 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
                     "placeholder_reason": s["placeholder_reason"],
                 })
     
+    snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
+    
+    # PATCHED: Remove overlapping placeholders that conflict with events
+    # When events get floor-aligned, they can overlap with placeholder segments
+    # that were created before alignment. Remove any placeholder that overlaps with an event.
+    cleaned = []
+    snapped_by_channel = {}
+    for slot in snapped:
+        cid = slot["channel_id"]
+        if cid not in snapped_by_channel:
+            snapped_by_channel[cid] = []
+        snapped_by_channel[cid].append(slot)
+    
+    for cid in sorted(snapped_by_channel.keys()):
+        slots = snapped_by_channel[cid]
+        i = 0
+        while i < len(slots):
+            current = slots[i]
+            
+            # If this is a placeholder, check if it overlaps with next event
+            if current["kind"] == "placeholder" and i + 1 < len(slots):
+                next_slot = slots[i + 1]
+                if next_slot["kind"] == "event" and current["end"] > next_slot["start"]:
+                    # Overlap detected: truncate or skip placeholder
+                    if current["start"] < next_slot["start"]:
+                        # Truncate placeholder to end where event starts
+                        current["end"] = next_slot["start"]
+                        cleaned.append(current)
+                    # else: placeholder completely overlapped, skip it
+                    i += 1
+                    continue
+            
+            cleaned.append(current)
+            i += 1
+    
+    snapped = cleaned
     snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
 
     # Persist new sticky choices
