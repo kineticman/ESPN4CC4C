@@ -1,4 +1,8 @@
 ## v4.1.0 — 2025-11-08
+- Post-align overlap cleanup: truncate-or-drop placeholders before events
+- Guarantees exactly one active slot per channel at any time
+
+## v4.1.0 — 2025-11-08
 - Placeholder/event overlap cleanup (truncate-or-drop)
 - Guarantees one active slot per channel at any time
 
