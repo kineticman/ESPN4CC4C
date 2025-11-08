@@ -147,6 +147,9 @@ def write_programmes(f, rows):
 
         f.write(f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n')
         f.write(f'    <title>{escape(title)}</title>\n')
+        # Add ESPN4CC4C category only for actual events (not placeholders)
+        if kind == "event":
+            f.write('    <category>ESPN4CC4C</category>\n')
         # minimal, clean — add <desc/> here if you want later
         # tag live-ish events (optional): uncomment if you'd like a <live/> node for events
         # if kind == "event":

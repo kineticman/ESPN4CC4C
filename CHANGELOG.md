@@ -1,3 +1,6 @@
+## v4.1.3 — 2025-11-08
+- Add <category>ESPN4CC4C</category> to all event programmes (not placeholders) for easier downstream filtering
+
 ## v4.1.2 — 2025-11-08
 - Misc bug fix in plan builder (already in /bin)
 - Keeps one-slot-per-time invariant post-cleanup
