@@ -129,7 +129,7 @@ Write-Host "== Re-check XMLTV (counting programmes) =="
 try {
   $xml = Invoke-WebRequest -UseBasicParsing -Uri ("{0}/out/epg.xml" -f $VC_RESOLVER_BASE_URL)
   $count = ([regex]::Matches($xml.Content, "<programme")).Count
-  Write-Host ("✓ {0} programmes found" -f $count)
+  Write-Host ("[OK] {0} programmes found" -f $count)
 } catch {
   Write-Host "0"
 }
@@ -139,14 +139,18 @@ Write-Host "== Re-check M3U (preview first 600 chars) =="
 try {
   $m3u = Invoke-WebRequest -UseBasicParsing -Uri ("{0}/out/playlist.m3u" -f $VC_RESOLVER_BASE_URL)
   $s = $m3u.Content
-  if ($s.Length -gt 600) { $s.Substring(0,600) } else { $s }
+  if ($s.Length -gt 600) { 
+    Write-Host $s.Substring(0,600) 
+  } else { 
+    Write-Host $s 
+  }
 } catch {
   Write-Host "[warn] Could not fetch M3U"
 }
 
 Write-Host ""
 Write-Host "========================================"
-Write-Host ("✓ DONE")
+Write-Host "[OK] DONE"
 Write-Host ("Health : {0}/health" -f $VC_RESOLVER_BASE_URL)
 Write-Host ("XMLTV  : {0}/out/epg.xml" -f $VC_RESOLVER_BASE_URL)
 Write-Host ("M3U    : {0}/out/playlist.m3u" -f $VC_RESOLVER_BASE_URL)
