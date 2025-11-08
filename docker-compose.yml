@@ -5,7 +5,6 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    # run as host user so bind-mount files aren't root-owned
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - TZ=${TZ:-America/New_York}
@@ -19,10 +18,11 @@ services:
       - LANES=${LANES:-40}
       - ALIGN=${ALIGN:-30}
       - MIN_GAP_MINS=${MIN_GAP_MINS:-30}
-      - CC_HOST=${CC_HOST:-127.0.0.1}     # host ONLY (no port)
+      - CC_HOST=${CC_HOST:-127.0.0.1}
       - CC_PORT=${CC_PORT:-5589}
       - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
       - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
+      - VC_M3U_PATH=${VC_M3U_PATH:-./out/playlist.m3u}   # optional; matches .env.example
     ports:
       - "${PORT:-8094}:${PORT:-8094}"
     volumes:
@@ -31,7 +31,7 @@ services:
       - ./out:/app/out
       - ./:/app
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8094/health"]
+      test: ["CMD-SHELL", "curl -fsS \"http://127.0.0.1:${PORT:-8094}/health\""]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -1,213 +1,97 @@
-<#  
-  windowsbootstrap_complete.ps1 - Complete Windows setup for ESPN4CC4C
-  
-  What it does:
-    * Creates data/logs/out directories
-    * Writes clean .env (UTF-8 no BOM, LF)
-    * Starts container and waits for /health
-    * Migrates DB schema
-    * Ingests 72h of ESPN events
-    * Builds virtual channel plan
-    * Generates EPG (XMLTV) and M3U playlist
-    * Validates and previews outputs
-#>
+# ESPN4CC4C Windows bootstrap (PowerShell)
+# - Builds/starts container
+# - Seeds DB, builds first plan
+# - Installs in-container cron to auto-refresh every 3h
+# Requires: Docker Desktop w/ Compose v2
 
-param(
-  [Parameter(Mandatory=$true)][string]$LanIp,
-  [int]$Port   = 8094,
-  [int]$CCPort = 5589
-)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-# === Pin working directory to this script's folder ===
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $ScriptDir) { $ScriptDir = $PSScriptRoot }
-Set-Location $ScriptDir
-$RepoDir = $ScriptDir
-
-# === Helpers ===
-function Write-Info ($msg) { Write-Host "[INFO] $msg" -ForegroundColor Cyan }
-function Write-Ok   ($msg) { Write-Host "[ OK ] $msg" -ForegroundColor Green }
-function Write-Warn ($msg) { Write-Host "[WARN] $msg" -ForegroundColor Yellow }
-function Write-Err  ($msg) { Write-Host "[FAIL] $msg" -ForegroundColor Red }
-
-# === 0) Sanity check ===
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Err "Docker Desktop / docker CLI not found in PATH"
-    exit 1
+function Need($cmd) {
+  if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+    throw "[FATAL] Missing command: $cmd"
+  }
 }
-$env:COMPOSE_PROJECT_NAME = "espn4cc"
 
-# === 1) Ensure project directories ===
-New-Item -ItemType Directory -Path (Join-Path $RepoDir 'data') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $RepoDir 'logs') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $RepoDir 'out')  -Force | Out-Null
-Write-Ok "Ensured ./data ./logs ./out"
+Need docker
 
-# === 2) .env (UTF-8 no BOM, LF) ===
-$envPath = Join-Path $RepoDir ".env"
+# Always run from repo root
+Set-Location -Path (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
-# Keep existing WATCH_API_KEY if present
-$existingKey = ""
+# Load .env into session (best-effort)
+$envPath = Join-Path (Get-Location) '.env'
 if (Test-Path $envPath) {
-    $raw = Get-Content $envPath -Raw
-    if ($raw -match "(?m)^WATCH_API_KEY=(.*)$") { 
-        $existingKey = $Matches[1].Trim() 
-    }
-}
-if ([string]::IsNullOrWhiteSpace($existingKey)) {
-    $existingKey = "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"
-    Write-Info "Using default WATCH_API_KEY"
+  Get-Content $envPath | ForEach-Object {
+    if ($_ -match '^\s*#') { return }
+    if ($_ -match '^\s*$') { return }
+    $k,$v = $_ -split '=',2
+    if ($k) { [Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim()) }
+  }
 }
 
-$envContent = @"
-# --- Service ---
-PORT=$Port
-TZ=America/New_York
+$PORT = $env:PORT; if (-not $PORT) { $PORT = '8094' }
+$VC_BASE = $env:VC_RESOLVER_BASE_URL; if (-not $VC_BASE) { $VC_BASE = "http://127.0.0.1:$PORT" }
 
-# --- Container paths (bind mounts map host -> /app/*) ---
-DB=/app/data/eplus_vc.sqlite3
-OUT=/app/out
-LOGS=/app/logs
-VC_M3U_PATH=/app/out/playlist.m3u
+Write-Host "== docker compose: build =="
+docker compose build --pull
 
-# --- Planner tunables ---
-VALID_HOURS=72
-LANES=40
-ALIGN=30
-MIN_GAP_MINS=30
+Write-Host "== docker compose: up =="
+docker compose up -d | Out-Null
 
-# --- Resolver base URL (LAN reachable; do NOT use 127.0.0.1) ---
-VC_RESOLVER_BASE_URL=http://${LanIp}:${Port}
+Write-Host "== readiness wait on $VC_BASE/health =="
+for ($i=0; $i -lt 90; $i++) {
+  try {
+    (Invoke-WebRequest -UseBasicParsing -Uri "$VC_BASE/health" -TimeoutSec 2) | Out-Null
+    Write-Host "Resolver healthy."
+    break
+  } catch { Start-Sleep -Seconds 1 }
+}
 
-# --- Chrome Capture integration ---
-CC_HOST=$LanIp
-CC_PORT=$CCPort
-M3U_GROUP_TITLE=ESPN+ VC
+Write-Host "== first run: DB ensure + migrate (inside container) =="
+docker exec -i espn4cc sh -lc 'set -e; : "${DB:=/app/data/eplus_vc.sqlite3}"; mkdir -p /app/data /app/out /app/logs; [ -f "$DB" ] || : > "$DB"; if [ -x /app/bin/db_migrate.py ]; then python3 /app/bin/db_migrate.py --db "$DB" || true; fi' | Out-Null
 
-# --- ESPN Watch API (public per project notes) ---
-WATCH_API_KEY=$existingKey
+Write-Host "== first run: generate plan + epg/m3u =="
+docker exec -i espn4cc sh -lc 'set -e; DB="${DB:-/app/data/eplus_vc.sqlite3}"; TZ="${TZ:-America/New_York}"; cnt=$(sqlite3 "$DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0); if [ "$cnt" -eq 0 ]; then python3 /app/bin/ingest_watch_graph_all_to_db.py --db "$DB" --days 3 --tz "$TZ" || true; fi; python3 /app/bin/build_plan.py --db "$DB" --valid-hours "${VALID_HOURS:-72}" --min-gap-mins "${MIN_GAP_MINS:-30}" --align "${ALIGN:-30}" --lanes "${LANES:-40}" --tz "$TZ" || true; python3 /app/bin/xmltv_from_plan.py --db "$DB" --out /app/out/epg.xml || true; python3 /app/bin/m3u_from_plan.py --db "$DB" --out /app/out/playlist.m3u --resolver-base "${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}" --cc-host "${CC_HOST:-127.0.0.1}" --cc-port "${CC_PORT:-5589}" || true' | Out-Null
+
+Write-Host "== installing in-container auto-refresh (cron) =="
+$cron = @"
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Every 3 hours between 09:00–23:00 (minute 7) with jitter & lock
+7 9-23/3 * * * root bash -lc 'sleep $((RANDOM % 60)); flock -n /tmp/espn4cc.lock bash -lc "/app/bin/refresh_in_container.sh >> /app/logs/cron.log 2>&1"'
+
+# Overnight catch-up once at 03:17
+17 3 * * * root bash -lc 'flock -n /tmp/espn4cc.lock bash -lc "/app/bin/refresh_in_container.sh >> /app/logs/cron.log 2>&1"'
 "@
 
-# Normalize newlines and save as UTF-8 no BOM
-$envContent = $envContent -replace "`r`n", "`n" -replace "`r","`n"
-[IO.File]::WriteAllText($envPath, $envContent, [Text.UTF8Encoding]::new($false))
-Write-Ok ".env written (LF, no BOM)"
+# Write cron file inside container, reload cron, prep log
+$bash = @"
+set -e
+mkdir -p /app/logs
+cat >/etc/cron.d/espn4cc <<'CRON'
+$cron
+CRON
+chmod 644 /etc/cron.d/espn4cc
+pkill -HUP cron || true
+: > /app/logs/cron.log
+chmod 666 /app/logs/cron.log
+"@
 
-# === 3) Start container ===
-Write-Info "Starting container..."
-docker compose up -d --force-recreate | Out-Null
-if ($LASTEXITCODE -ne 0) { 
-    Write-Err "docker compose up failed"
-    exit 2 
-}
+docker exec -i espn4cc sh -lc "$bash" | Out-Null
+Write-Host "[ok] cron installed & reloaded."
 
-# === 4) Health wait ===
-$healthUrl = "http://${LanIp}:${Port}/health"
-Write-Info "Waiting for health at $healthUrl"
-$healthy = $false
-for ($i=0; $i -lt 60; $i++) {
-    try {
-        $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3
-        if ($r.StatusCode -eq 200 -and $r.Content -like '*"ok":true*') { 
-            $healthy = $true
-            break 
-        }
-    } catch { 
-        Start-Sleep -Milliseconds 500 
-    }
-    Start-Sleep -Seconds 1
-}
-if (-not $healthy) { 
-    Write-Err "Resolver did not become healthy at $healthUrl"
-    exit 3 
-}
-Write-Ok "Resolver healthy"
-
-# === 5) DB migrate (idempotent) ===
-Write-Info "Migrating DB schema..."
-docker compose exec -T espn4cc sh -lc 'python3 /app/bin/db_migrate.py --db /app/data/eplus_vc.sqlite3' | Out-Null
-if ($LASTEXITCODE -ne 0) { 
-    Write-Err "db_migrate.py failed"
-    exit 4 
-}
-$tables = (docker compose exec -T espn4cc sh -lc 'sqlite3 /app/data/eplus_vc.sqlite3 ".tables"')
-Write-Ok ("Tables: {0}" -f $tables)
-
-# === 6) Ingest 72h (GET-only) ===
-Write-Info "Ingesting 72h from ESPN Watch Graph..."
-$ingOut = docker compose exec -T espn4cc sh -lc 'python3 /app/bin/ingest_watch_graph_all_to_db.py --db /app/data/eplus_vc.sqlite3 --days 3 --tz America/New_York' 2>&1
-$ingOut | Write-Host
-if ($ingOut -notmatch 'Ingested \d+ airings') {
-    Write-Warn "Ingest did not report counts - check WATCH_API_KEY and network"
-}
-
-# === 7) Build plan + write outputs ===
-Write-Info "Building plan + writing XMLTV/M3U..."
-docker compose exec -T espn4cc sh -lc 'python3 /app/bin/build_plan.py --db /app/data/eplus_vc.sqlite3 --valid-hours 72 --min-gap-mins 30 --align 30 --lanes 40 --tz America/New_York' | Write-Host
-docker compose exec -T espn4cc sh -lc 'python3 /app/bin/xmltv_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/epg.xml' | Write-Host
-docker compose exec -T espn4cc sh -lc "python3 /app/bin/m3u_from_plan.py --db /app/data/eplus_vc.sqlite3 --out /app/out/playlist.m3u --resolver-base http://${LanIp}:${Port} --cc-host ${LanIp} --cc-port ${CCPort}" | Write-Host
-Write-Ok "EPG/M3U written"
-
-# === 8) Final tests ===
-# EPG: download -> count <programme>
-Write-Info "Re-check XMLTV (fresh read)"
-$xmlPath = Join-Path $RepoDir "epg.xml"
+# Summary
 try {
-    Invoke-WebRequest "http://${LanIp}:${Port}/out/epg.xml" -UseBasicParsing -OutFile $xmlPath
-    $xml = Get-Content $xmlPath -Raw
-    $progCount = ([regex]::Matches($xml,'<programme')).Count
-    Write-Host ("{0} programmes found" -f $progCount) -ForegroundColor Green
-} catch {
-    Write-Warn "Could not fetch EPG: $($_.Exception.Message)"
-}
-
-# M3U: download -> preview
-Write-Info "Re-check M3U (preview first ~600 chars)"
-$m3uPath   = Join-Path $RepoDir 'playlist.m3u'
-$baseUrl   = "http://${LanIp}:${Port}"
-$m3uUrls   = @("$baseUrl/out/playlist.m3u", "$baseUrl/playlist.m3u")
-$downloaded = $false
-
-foreach ($u in $m3uUrls) {
-    Write-Host "GET $u" -ForegroundColor DarkCyan
-    try {
-        $resp = Invoke-WebRequest -Uri $u -UseBasicParsing -ErrorAction Stop
-        # Decode content as string
-        $content = [System.Text.Encoding]::UTF8.GetString($resp.Content)
-        
-        if ($resp.StatusCode -eq 200 -and $content -match '^\#EXTM3U') {
-            $content | Set-Content -Path $m3uPath -NoNewline
-            Write-Ok "Saved M3U -> $m3uPath"
-            $downloaded = $true
-            break
-        } else {
-            Write-Warn "Unexpected response (Status=$($resp.StatusCode)). First 60 chars:"
-            $head = $content.Substring(0, [Math]::Min(60, $content.Length))
-            Write-Host $head -ForegroundColor DarkYellow
-        }
-    } catch {
-        Write-Warn "Request failed: $($_.Exception.Message)"
-        if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
-            Write-Warn "HTTP status: $([int]$_.Exception.Response.StatusCode)"
-        }
-    }
-}
-
-if (-not $downloaded) {
-    Write-Err "Could not fetch a valid M3U from any known path. Tried: $($m3uUrls -join ', ')"
-    Write-Host "Tip: check resolver health: $healthUrl" -ForegroundColor Yellow
-    exit 5
-}
-
-# Safe preview (first 600 chars)
-$m3u = Get-Content $m3uPath -Raw
-$preview = $m3u.Substring(0, [Math]::Min(600, $m3u.Length))
-Write-Host $preview -ForegroundColor Gray
-
+  $prog = (Invoke-WebRequest -UseBasicParsing -Uri "$VC_BASE/out/epg.xml").Content | Select-String -Pattern '<programme' -AllMatches
+  $count = $prog.Matches.Count
+} catch { $count = 0 }
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Ok "DONE"
-Write-Host "Health   : $healthUrl" -ForegroundColor Cyan
-Write-Host "XMLTV    : http://${LanIp}:${Port}/out/epg.xml" -ForegroundColor Cyan
-Write-Host "M3U      : http://${LanIp}:${Port}/out/playlist.m3u" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Green
+Write-Host "========================================"
+Write-Host ("Health : {0}" -f "$VC_BASE/health")
+Write-Host ("XMLTV  : {0}" -f "$VC_BASE/out/epg.xml")
+Write-Host ("M3U    : {0}" -f "$VC_BASE/out/playlist.m3u")
+Write-Host ("Programmes in XML: {0}" -f $count)
+Write-Host "Cron log tail:"
+docker exec -i espn4cc sh -lc "tail -n 60 /app/logs/cron.log || true"
+Write-Host "========================================"

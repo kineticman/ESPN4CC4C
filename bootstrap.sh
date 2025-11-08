@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
-GIT_REF="${GIT_REF:-v3.91}"
+# ESPN4CC4C bootstrap: build, run, first plan, and install in-container auto-refresh
 set -euo pipefail
 
-# --- Always run from repo root ---
+# --- Preflight ---
+need() { command -v "$1" >/dev/null 2>&1 || { echo "[FATAL] Missing command: $1" >&2; exit 1; }; }
+need docker
+docker compose version >/dev/null 2>&1 || { echo "[FATAL] Docker Compose v2 not available."; exit 1; }
+
 SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# --- Preflight: required commands & files ---
-need() { command -v "$1" >/dev/null 2>&1 || { echo "[FATAL] Missing command: $1" >&2; exit 1; }; }
-need docker
-if ! docker compose version >/dev/null 2>&1; then
-  echo "[FATAL] Docker Compose v2 not available. Update Docker Desktop." >&2
-  exit 1
-fi
 [[ -f Dockerfile ]] || { echo "[FATAL] Dockerfile not found in $PWD" >&2; exit 1; }
 [[ -f docker-compose.yml ]] || { echo "[FATAL] docker-compose.yml not found in $PWD" >&2; exit 1; }
-[[ -f docker-entrypoint.sh ]] || { echo "[FATAL] docker-entrypoint.sh missing at repo root (did cleanup move/delete it?)" >&2; exit 1; }
 
-# --- Load host-side .env (LAN, PORT, etc.) ---
+# --- Load host .env if present ---
 if [ -f ".env" ]; then
   set -a; . ./.env; set +a
 fi
 
-# --- Defaults ---
+# --- Sanity defaults ---
 PORT="${PORT:-8094}"
 TZ="${TZ:-America/New_York}"
 VALID_HOURS="${VALID_HOURS:-72}"
@@ -30,21 +26,22 @@ LANES="${LANES:-40}"
 ALIGN="${ALIGN:-30}"
 MIN_GAP_MINS="${MIN_GAP_MINS:-30}"
 VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:${PORT}}"
-LAN="${VC_RESOLVER_BASE_URL#http://}"; LAN="${LAN#https://}"
+CC_HOST="${CC_HOST:-127.0.0.1}"
+CC_PORT="${CC_PORT:-5589}"
 
-# --- Host path mapping (NEVER use /app on host) ---
-if [[ "${DB:-}" =~ ^/app/ ]];  then echo "[FATAL] .env DB is a container path (${DB}). Use host-relative (e.g., ./data/eplus_vc.sqlite3)." >&2; exit 1; fi
-if [[ "${OUT:-}" =~ ^/app/ ]]; then echo "[FATAL] .env OUT is a container path (${OUT}). Use host-relative (e.g., ./out)." >&2; exit 1; fi
-if [[ "${LOGS:-}" =~ ^/app/ ]]; then echo "[FATAL] .env LOGS is a container path (${LOGS}). Use host-relative (e.g., ./logs)." >&2; exit 1; fi
+# --- Host path policy: NEVER use /app/* on host ---
+for var in DB OUT LOGS; do
+  val="${!var:-}"
+  if [[ "${val:-}" =~ ^/app/ ]]; then
+    echo "[FATAL] .env $var is a container path (${val}). Use host-relative (e.g., ./data, ./out, ./logs)." >&2
+    exit 1
+  fi
+done
 
-# Resolve host-side paths (mkdir only on host paths)
-HOST_DB="${DB:-$PWD/data/eplus_vc.sqlite3}"
-[[ "$HOST_DB" = /* ]] || HOST_DB="$PWD/${HOST_DB#./}"
-HOST_OUT="${OUT:-$PWD/out}"
-[[ "$HOST_OUT" = /* ]] || HOST_OUT="$PWD/${HOST_OUT#./}"
-HOST_LOGS="${LOGS:-$PWD/logs}"
-[[ "$HOST_LOGS" = /* ]] || HOST_LOGS="$PWD/${HOST_LOGS#./}"
-
+# Resolve host-side paths and ensure they exist
+HOST_DB="${DB:-$PWD/data/eplus_vc.sqlite3}"; [[ "$HOST_DB" = /* ]] || HOST_DB="$PWD/${HOST_DB#./}"
+HOST_OUT="${OUT:-$PWD/out}";               [[ "$HOST_OUT" = /* ]] || HOST_OUT="$PWD/${HOST_OUT#./}"
+HOST_LOGS="${LOGS:-$PWD/logs}";            [[ "$HOST_LOGS" = /* ]] || HOST_LOGS="$PWD/${HOST_LOGS#./}"
 mkdir -p "$(dirname "$HOST_DB")" "$HOST_OUT" "$HOST_LOGS"
 
 echo "== docker compose: build =="
@@ -54,7 +51,7 @@ echo "== docker compose: up =="
 docker compose up -d
 
 echo "== readiness wait on ${VC_RESOLVER_BASE_URL}/health =="
-for i in {1..60}; do
+for i in {1..90}; do
   if curl -fsS "${VC_RESOLVER_BASE_URL}/health" >/dev/null; then
     echo "Resolver healthy."
     break
@@ -71,25 +68,57 @@ docker compose exec -T espn4cc bash -lc '
   [ -f "$DB" ] || : > "$DB"
   if [ -x /app/bin/db_migrate.py ]; then
     python3 /app/bin/db_migrate.py --db "$DB" || true
-  else
-    echo "[warn] bin/db_migrate.py missing (container)."
   fi
 '
 
-echo "== first run: generating plan + outputs (inline) == "
+echo "== first run: generate plan + epg/m3u (inline) =="
 docker compose exec -T espn4cc bash -lc '
   set -e
   DB="${DB:-/app/data/eplus_vc.sqlite3}"
-  python3 /app/bin/ingest_watch_graph_all_to_db.py --db "$DB" --days "${DAYS:-3}" || true
-  python3 /app/bin/build_plan.py --db "$DB" --valid-hours "${VALID_HOURS:-72}" --min-gap-mins "${MIN_GAP_MINS:-30}" --align 30 || true
+  TZ="${TZ:-America/New_York}"
+  VALID_HOURS="${VALID_HOURS:-72}"
+  MIN_GAP_MINS="${MIN_GAP_MINS:-30}"
+  ALIGN="${ALIGN:-30}"
+  LANES="${LANES:-40}"
+  VC_RESOLVER_BASE_URL="${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}"
+  CC_HOST="${CC_HOST:-127.0.0.1}"
+  CC_PORT="${CC_PORT:-5589}"
+  # Seed if empty
+  cnt=$(sqlite3 "$DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0)
+  if [ "$cnt" -eq 0 ]; then
+    python3 /app/bin/ingest_watch_graph_all_to_db.py --db "$DB" --days 3 --tz "$TZ" || true
+  fi
+  python3 /app/bin/build_plan.py --db "$DB" --valid-hours "$VALID_HOURS" --min-gap-mins "$MIN_GAP_MINS" --align "$ALIGN" --lanes "$LANES" --tz "$TZ" || true
   python3 /app/bin/xmltv_from_plan.py --db "$DB" --out /app/out/epg.xml || true
-  python3 /app/bin/m3u_from_plan.py --db "$DB" --out /app/out/playlist.m3u --resolver-base "${VC_RESOLVER_BASE_URL}" --cc-host "${CC_HOST:-127.0.0.1}" --cc-port "${CC_PORT:-8089}" || true
+  python3 /app/bin/m3u_from_plan.py   --db "$DB" --out /app/out/playlist.m3u --resolver-base "$VC_RESOLVER_BASE_URL" --cc-host "$CC_HOST" --cc-port "$CC_PORT" || true
+'
+
+# --- Install in-container auto-refresh via cron.d ---
+echo "== installing in-container auto-refresh (cron) =="
+docker compose exec -T espn4cc bash -lc '
+set -e
+mkdir -p /app/logs
+cat >/etc/cron.d/espn4cc <<CRON
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Every 3 hours between 09:00–23:00 (minute 7) with jitter & lock
+7 9-23/3 * * * root bash -lc '''sleep $((RANDOM % 60)); flock -n /tmp/espn4cc.lock bash -lc "/app/bin/refresh_in_container.sh >> /app/logs/cron.log 2>&1"'''
+
+# Overnight catch-up once at 03:17
+17 3 * * * root bash -lc '''flock -n /tmp/espn4cc.lock bash -lc "/app/bin/refresh_in_container.sh >> /app/logs/cron.log 2>&1"'''
+CRON
+chmod 644 /etc/cron.d/espn4cc
+pkill -HUP cron || true
+: > /app/logs/cron.log
+chmod 666 /app/logs/cron.log
+echo "[ok] cron installed & reloaded."
 '
 
 # ---------- Final tests & summary ----------
 echo ""
 echo "== Re-check XMLTV (counting programmes) =="
-PROG_COUNT=$(curl -fsS "${VC_RESOLVER_BASE_URL}/out/epg.xml" 2>/dev/null | grep -c '<programme' || echo "0")
+PROG_COUNT=$(curl -fsS "${VC_RESOLVER_BASE_URL}/out/epg.xml" 2>/dev/null | grep -c "<programme" || echo "0")
 echo "✓ ${PROG_COUNT} programmes found"
 
 echo ""
@@ -97,13 +126,14 @@ echo "== Re-check M3U (preview first 600 chars) =="
 curl -fsS "${VC_RESOLVER_BASE_URL}/out/playlist.m3u" 2>/dev/null | head -c 600 || echo "[warn] Could not fetch M3U"
 
 echo ""
+echo "== Cron log (tail) =="
+docker compose exec -T espn4cc bash -lc "tail -n 60 /app/logs/cron.log || true"
+
+echo ""
 echo "========================================"
 echo "✓ DONE"
-echo "Health   : ${VC_RESOLVER_BASE_URL}/health"
-echo "XMLTV    : ${VC_RESOLVER_BASE_URL}/out/epg.xml"
-echo "M3U      : ${VC_RESOLVER_BASE_URL}/out/playlist.m3u"
+echo "Health : ${VC_RESOLVER_BASE_URL}/health"
+echo "XMLTV  : ${VC_RESOLVER_BASE_URL}/out/epg.xml"
+echo "M3U    : ${VC_RESOLVER_BASE_URL}/out/playlist.m3u"
+echo "Cron   : docker exec -it espn4cc sh -lc '''tail -f /app/logs/cron.log''''
 echo "========================================"
-
-# Provenance
-echo ""
-echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
