@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # file: bin/build_plan.py
-# ESPN Clean v2.0 — canonical plan builder (events -> plan_run/plan_slot)
+# ESPN Clean v2.1 — canonical plan builder (events -> plan_run/plan_slot)
 # Version with "sticky lanes" via event_lane table
+# PATCHED: Fixed event duplication, grid alignment, and channel naming
 
 import argparse, os, json, sqlite3, hashlib
 try:
@@ -10,7 +11,7 @@ try:
 except Exception:
     BUILD_VERSION = "unknown"
     RUNTIME_VERSION = "unknown"
-RUNTIME_VERSION = get_version()
+
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -29,7 +30,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.2.0-sticky"
+VERSION = "2.1.0-sticky-patched"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -58,7 +59,8 @@ def make_default_lanes(n:int=40, start_chno:int=None):
         start_chno = CFG_CHANNEL_START_CHNO
     lanes = []
     for i in range(1, n+1):
-        lanes.append((f"eplus{i}", start_chno + (i-1), f"ESPN+ EPlus {i}", "ESPN+ VC"))
+        # PATCHED: Consistent naming format
+        lanes.append((f"eplus{i:02d}", start_chno + (i-1), f"ESPN+ EPlus {i}", "ESPN+ VC"))
     return lanes
 
 def seed_channels_if_empty(conn:sqlite3.Connection, nlanes:int=40):
@@ -76,7 +78,7 @@ def seed_channels_if_empty(conn:sqlite3.Connection, nlanes:int=40):
     return len(lanes)
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="ESPN Clean v2.0 Plan Builder")
+    ap = argparse.ArgumentParser(description="ESPN Clean v2.1 Plan Builder (Patched)")
     ap.add_argument("--db", required=True)
     ap.add_argument("--valid-hours", type=int, default=CFG_VALID_HOURS)
     ap.add_argument("--tz", default=CFG_TZ)
@@ -167,10 +169,12 @@ def _seed_event_lane_from_latest_plan(conn):
     return len(events)
 
 def _floor_to_step(dt_obj, minutes: int):
+    """Floor datetime to the nearest step boundary."""
     m = (dt_obj.minute // minutes) * minutes
     return dt_obj.replace(minute=m, second=0, microsecond=0)
 
 def _ceil_to_step(dt_obj, minutes: int):
+    """Ceil datetime to the nearest step boundary."""
     base = _floor_to_step(dt_obj, minutes)
     if base < dt_obj:
         base = base + timedelta(minutes=minutes)
@@ -272,18 +276,33 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
                                "kind": "placeholder", "placeholder_reason": "tail_gap"})
     plan_slots.sort(key=lambda r:(r["channel_id"], r["start"]))
 
-    # Snap all slots to grid & split across boundaries
+    # PATCHED: Snap and segment differently for events vs placeholders
     snapped = []
     for s in plan_slots:
-        for seg_s, seg_e in _segmentize(s["start"], s["end"], align_minutes):
+        if s["kind"] == "event":
+            # Events: keep whole, just align start/end to grid boundaries
+            aligned_start = _floor_to_step(s["start"], align_minutes)
+            aligned_end = _ceil_to_step(s["end"], align_minutes)
             snapped.append({
                 "channel_id": s["channel_id"],
-                "event_id": s["event_id"] if s["kind"] == "event" else None,
-                "start": seg_s.replace(second=0, microsecond=0),
-                "end":   seg_e.replace(second=0, microsecond=0),
-                "kind":  s["kind"] if s["kind"] == "event" else "placeholder",
-                "placeholder_reason": s["placeholder_reason"] if s["kind"] != "event" else None,
+                "event_id": s["event_id"],
+                "start": aligned_start.replace(second=0, microsecond=0),
+                "end": aligned_end.replace(second=0, microsecond=0),
+                "kind": "event",
+                "placeholder_reason": None,
             })
+        else:
+            # Placeholders: split across grid boundaries for better visual alignment
+            for seg_s, seg_e in _segmentize(s["start"], s["end"], align_minutes):
+                snapped.append({
+                    "channel_id": s["channel_id"],
+                    "event_id": None,
+                    "start": seg_s.replace(second=0, microsecond=0),
+                    "end": seg_e.replace(second=0, microsecond=0),
+                    "kind": "placeholder",
+                    "placeholder_reason": s["placeholder_reason"],
+                })
+    
     snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
 
     # Persist new sticky choices

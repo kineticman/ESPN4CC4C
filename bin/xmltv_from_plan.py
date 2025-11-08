@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 xmltv_from_plan.py — Build XMLTV from ESPN4CC4C DB plan.
+PATCHED version with deduplication, fixed LCN, and improved error handling
 
 - Channels are DB-authoritative from `channel` (id, name, chno, active).
 - Programmes come from latest plan in `plan_slot`.
@@ -18,11 +19,18 @@ from xml.sax.saxutils import escape
 
 GENERATOR = 'espn-clean-v2.1'
 
+# Try to import channel start from config, fallback to default
+try:
+    from config import CHANNEL_START_CHNO as CFG_CHANNEL_START_CHNO
+except Exception:
+    CFG_CHANNEL_START_CHNO = 20010
+
 
 def iso_to_xmltv(iso: str) -> str:
     """
     Convert ISO8601 like '2025-11-08T02:30:00+00:00' to '20251108023000 +0000'.
     Assumes UTC offset is present; if missing, treats as UTC.
+    PATCHED: Improved error handling with logging.
     """
     if not iso:
         return ""
@@ -38,19 +46,21 @@ def iso_to_xmltv(iso: str) -> str:
             dt = dt.replace(tzinfo=timezone.utc)
         dt = dt.astimezone(timezone.utc)
         return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
-    except Exception:
+    except Exception as e:
         # last-ditch: strip offset manually
         try:
             base = s.split('+', 1)[0].split('-', 1)[0] if '+' in s else s.split('-', 1)[0]
             dt = datetime.fromisoformat(base)
             return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
         except Exception:
+            print(f"WARNING: Failed to parse timestamp '{iso}': {e}", file=sys.stderr)
             return ""
 
 
 def fetch_channels(conn: sqlite3.Connection):
     """
     Return list of dicts: {id(str), name(str), lcn(str)} for active channels.
+    PATCHED: Fixed LCN calculation to use config value properly.
     """
     rows = conn.execute("""
         SELECT id, name, chno, COALESCE(active,1) AS active
@@ -61,17 +71,20 @@ def fetch_channels(conn: sqlite3.Connection):
 
     out = []
     for r in rows:
-        ch_id = int(r[0])
-        name = (r[1] or f"ESPN+ EPlus {ch_id}").strip()
+        ch_id = str(r[0])
+        name = (r[1] or f"ESPN+ EPlus {r[0]}").strip()
         chno = r[2]
-        lcn = None
-        try:
-            lcn = int(chno) if chno is not None else None
-        except Exception:
-            lcn = None
-        if lcn is None:
-            lcn = 20009 + ch_id
-        out.append({"id": str(ch_id), "name": name, "lcn": str(lcn)})
+        
+        # PATCHED: Use actual chno from DB, fallback to calculated value
+        if chno is not None:
+            try:
+                lcn = str(int(chno))
+            except Exception:
+                lcn = str(CFG_CHANNEL_START_CHNO + int(ch_id) - 1)
+        else:
+            lcn = str(CFG_CHANNEL_START_CHNO + int(ch_id) - 1)
+        
+        out.append({"id": ch_id, "name": name, "lcn": lcn})
     return out
 
 
@@ -95,6 +108,7 @@ def fetch_rows_latest_plan(conn: sqlite3.Connection):
 
 
 def write_channels(f, channels):
+    """Write channel definitions to XMLTV."""
     for ch in channels:
         cid = escape(ch["id"])
         name = escape(ch["name"])
@@ -106,12 +120,30 @@ def write_channels(f, channels):
 
 
 def write_programmes(f, rows):
+    """
+    Write programme entries to XMLTV.
+    PATCHED: Added deduplication to prevent overlapping entries.
+    """
+    seen = set()  # Track (channel_id, start, stop, title) to detect duplicates
+    duplicates_skipped = 0
+    
     for r in rows:
         cid = str(r["channel_id"])
         start = iso_to_xmltv(r["start_utc"])
         stop = iso_to_xmltv(r["end_utc"])
         kind = (r["kind"] or "").strip()
         title = r["title"] or ("Sports" if kind == "event" else "Stand By")
+        
+        # Skip entries with invalid timestamps
+        if not start or not stop:
+            continue
+        
+        # PATCHED: Deduplication check
+        key = (cid, start, stop, title)
+        if key in seen:
+            duplicates_skipped += 1
+            continue
+        seen.add(key)
 
         f.write(f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n')
         f.write(f'    <title>{escape(title)}</title>\n')
@@ -120,6 +152,9 @@ def write_programmes(f, rows):
         # if kind == "event":
         #     f.write('    <live/>\n')
         f.write('  </programme>\n')
+    
+    if duplicates_skipped > 0:
+        print(f"[xmltv] Skipped {duplicates_skipped} duplicate programme entries", file=sys.stderr)
 
 
 def main():
@@ -148,7 +183,8 @@ def main():
             print("FATAL: No plan rows in plan_slot", file=sys.stderr)
             sys.exit(3)
 
-        print(f"[xmltv] fetched rows (latest plan only): {len(rows)}")
+        print(f"[xmltv] plan_id={pid}, fetched {len(rows)} raw rows")
+        print(f"[xmltv] generating EPG for {len(channels)} channels")
 
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
@@ -158,7 +194,7 @@ def main():
             # Channels first (authoritative)
             write_channels(f, channels)
 
-            # Programmes
+            # Programmes (with deduplication)
             write_programmes(f, rows)
 
             f.write('</tv>\n')
