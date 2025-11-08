@@ -1,3 +1,9 @@
+## v4.1.0 — 2025-11-08
+- EPG dup fix (no event segmentation)
+- DB-first LCN w/ config fallback
+- XML writer dedup safety net
+- Smaller/faster EPG export
+
 # Changelog
 
 ## v4.0.3 — 2025-11-07
