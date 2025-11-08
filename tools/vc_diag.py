@@ -264,15 +264,37 @@ def xml_now_for_channel(xml_path: str, chan_id: int, ts_utc: Optional[datetime] 
 
 # ---------- main ----------
 def main():
-    default_proj = "/home/brad/Projects/ESPN4CC4C"
-    default_env  = os.path.join(default_proj, ".env.plan")
+    # Auto-detect repo root: script is in tools/, so parent is repo root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_proj = os.path.dirname(script_dir) if os.path.basename(script_dir) == "tools" else script_dir
+    
+    # Check for .env.plan first, then fall back to .env
+    default_env = os.path.join(default_proj, ".env.plan")
+    if not os.path.isfile(default_env):
+        default_env = os.path.join(default_proj, ".env")
+    
     env = load_env_file(default_env)
 
     ap = argparse.ArgumentParser(description="ESPN4CC4C diag (+mismatch audits)")
     ap.add_argument("--lane", default=os.getenv("VC_DIAG_LANE","eplus11"))
-    ap.add_argument("--db", default=os.getenv("VC_DB", env.get("DB", f"{default_proj}/data/eplus_vc.sqlite3")))
-    ap.add_argument("--resolver", default=os.getenv("VC_RESOLVER_ORIGIN", env.get("RESOLVER_BASE","http://127.0.0.1:8094")))
-    ap.add_argument("--xml", default=env.get("OUT", f"{default_proj}/out/epg.xml"), help="path to epg.xml (defaults to OUT in .env.plan)")
+    
+    # Convert container paths to host paths
+    db_path = env.get("DB", f"{default_proj}/data/eplus_vc.sqlite3")
+    if db_path.startswith("/app/"):
+        # Container path - convert to host path
+        db_path = os.path.join(default_proj, db_path.replace("/app/", ""))
+    
+    xml_path = env.get("OUT", f"{default_proj}/out")
+    if xml_path.startswith("/app/"):
+        # Container path - convert to host path  
+        xml_path = os.path.join(default_proj, xml_path.replace("/app/", ""))
+    # If OUT is a directory, append epg.xml
+    if os.path.isdir(xml_path):
+        xml_path = os.path.join(xml_path, "epg.xml")
+    
+    ap.add_argument("--db", default=os.getenv("VC_DB", db_path))
+    ap.add_argument("--resolver", default=os.getenv("VC_RESOLVER_ORIGIN", env.get("VC_RESOLVER_BASE_URL", env.get("RESOLVER_BASE","http://127.0.0.1:8094"))))
+    ap.add_argument("--xml", default=xml_path, help="path to epg.xml (defaults to OUT in .env)")
     ap.add_argument("--since-mins", type=int, default=30)
     ap.add_argument("--quiet-errors", action="store_true", help="only show a count of recent resolver errors")
     ap.add_argument("--no-fleet", action="store_true", help="skip sweeping all channels")
