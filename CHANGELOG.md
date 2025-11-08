@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.0.3 — 2025-11-07
+- Windows: bootstrap pinned to script directory; writes .env to repo; robust M3U fetch (tries /out first, validates #EXTM3U, hard-fails on error).
+- Tools: add/improve vc_diag (resolver health, lane audit, DB/XML cross-checks, helpful suggestions).
+- Housekeeping: GET-only checks, prefer /out/* endpoints, no proxies for ESPN endpoints.
+
+
 ## [3.96] - 2025-10-31
 - Fix: standby /vc/* 500 due to missing RedirectResponse import
 - Docs: cleaned CC4C fullscreen helper guide
