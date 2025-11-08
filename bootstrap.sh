@@ -41,7 +41,7 @@ done
 # Resolve host paths & ensure they exist
 HOST_DB="${DB:-$PWD/data/eplus_vc.sqlite3}"; [[ "$HOST_DB"  = /* ]] || HOST_DB="$PWD/${HOST_DB#./}"
 HOST_OUT="${OUT:-$PWD/out}";                 [[ "$HOST_OUT" = /* ]] || HOST_OUT="$PWD/${HOST_OUT#./}"
-HOST_LOGS="${LOGS:-$PWD/logs}";              [[ "$HOST_LOGS"= /* ]] || HOST_LOGS="$PWD/${HOST_LOGS#./}"
+HOST_LOGS="${LOGS:-$PWD/logs}";              [[ "$HOST_LOGS" = /* ]] || HOST_LOGS="$PWD/${HOST_LOGS#./}"
 mkdir -p "$(dirname "$HOST_DB")" "$HOST_OUT" "$HOST_LOGS"
 
 # -------- Build & up --------
