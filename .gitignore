@@ -30,3 +30,11 @@ data/
 __pycache__/
 *.pyc
 .DS_Store
+.env
+out/
+logs/
+data/
+*.sqlite3
+__pycache__/
+*.pyc
+.DS_Store
