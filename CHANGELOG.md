@@ -35,3 +35,6 @@
 - fix(resolver): route collision on /channels (split DB vs XMLTV list)
 - fix(resolver): add missing imports (JSONResponse, RedirectResponse, HTMLResponse)
 - chore: env alignment (DB path), tidy OUT_DIR handling
+
+## v4.0.9 - 2025-11-08
+- Update windowsbootstrap.ps1 (readiness wait; GET-only health/EPG/M3U checks; clearer errors)
