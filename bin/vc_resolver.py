@@ -221,31 +221,41 @@ def _load_channels_from_xmltv(xml_path):
     except Exception:
         return []
 
-@app.get("/channels", tags=["channels"], summary="XMLTV-backed channel list")
-def channels_xml():
-    """Reflects what the current EPG exposes (array of channels)."""
-    path = os.getenv("VC_EPG_PATH", os.path.join(OUT_DIR, "epg.xml"))
-    if not os.path.exists(path):
-        return []
-    chans = _load_channels_from_xmltv(path)
-    # enrich with <lcn> if present
+# --- NEW helpers: file & DB fallbacks for /channels ---
+def _load_channels_from_file(json_path: str):
     try:
-        import xml.etree.ElementTree as ET
-        root = ET.parse(path).getroot()
-        lcn_map = {}
-        for c in root.findall("channel"):
-            cid = c.get("id")
-            lcn = (c.findtext("lcn") or "").strip()
-            if cid and lcn:
-                lcn_map[cid] = lcn
-        for c in chans:
-            if c["id"] in lcn_map:
-                c["lcn"] = lcn_map[c["id"]]
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list) and data:
+            return data
     except Exception:
         pass
-    return chans
+    return []
 
-# --- VC endpoints ---
+def _channels_from_db_path(dbp: str):
+    conn = None
+    try:
+        conn = sqlite3.connect(f"file:{dbp}?mode=ro", uri=True, check_same_thread=False, timeout=2.0)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT CAST(id AS TEXT) AS id,
+                   COALESCE(name, printf('ESPN+ EPlus %d', id)) AS name,
+                   CAST(COALESCE(chno, 20009 + id) AS TEXT)     AS lcn
+            FROM channel
+            WHERE COALESCE(active,1)=1
+            ORDER BY COALESCE(chno,id)
+        """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+# --- Preferred /channels (File → DB → XMLTV) ---
 @app.get("/vc/{lane}")
 def tune(lane: str, request: Request, only_live: int = 0, at: str | None = None):
     try:
@@ -380,6 +390,7 @@ def deeplink_lane(lane: str, at: Optional[str] = None):
             return PlainTextResponse(deeplink_full, status_code=200)
     except Exception:
         return PlainTextResponse("", status_code=204)
+
 # --- whatson with deeplink support ---
 @app.get("/whatson/{lane}", response_class=JSONResponse)
 def whatson(
@@ -439,13 +450,10 @@ def whatson(
     want_txt_deeplink_full  = (param_l == "deeplink_url" and fmt == "txt")
     want_txt_deeplink_short = (param_l in ("deeplink_url","deeplink_url_short","deeplink_url") and fmt == "txt")
     want_txt_playid_short   = (param_l == "" and fmt == "txt")
-    
 
-    
-
-    db_path = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
+    db_path_env = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{db_path_env}?mode=ro", uri=True)
     except Exception as e:
         if want_txt_deeplink_short or want_txt_playid_short:
             return Response(status_code=404)
@@ -570,9 +578,9 @@ def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplin
     when = _parse_at(at)
     when_iso = when.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
 
-    db_path = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
+    db_path_env = os.getenv("VC_DB", "data/eplus_vc.sqlite3")
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{db_path_env}?mode=ro", uri=True)
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"DB open failed: {e}"}, status_code=404)
 
@@ -617,3 +625,44 @@ def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplin
         return JSONResponse({"ok": True, "at": when_iso, "items": items}, status_code=200)
     finally:
         conn.close()
+@app.get("/channels", tags=["channels"], summary="DB-backed channel list (authoritative)")
+def channels():
+    """
+    Authoritative channel list from the DB only.
+    Uses table: channel(id, name, chno, active).
+    If chno is null/invalid, synthesize LCN = 20009 + id.
+    """
+    import os
+    import sqlite3
+
+    dbp = os.environ.get("VC_DB", "data/eplus_vc.sqlite3")
+    con = sqlite3.connect(f"file:{dbp}?mode=ro", uri=True, check_same_thread=False, timeout=2.0)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(
+            """
+            SELECT id, name, chno, COALESCE(active,1) AS active
+            FROM channel
+            WHERE COALESCE(active,1)=1
+            ORDER BY COALESCE(chno,id)
+            """
+        ).fetchall()
+
+        out = []
+        for r in rows:
+            ch_id = int(r["id"])
+            name  = (r["name"] or f"ESPN+ EPlus {ch_id}").strip()
+            chno  = r["chno"]
+            try:
+                lcn = int(chno) if chno is not None else None
+            except Exception:
+                lcn = None
+            if lcn is None:
+                lcn = 20009 + ch_id
+            out.append({"id": str(ch_id), "name": name, "lcn": str(lcn)})
+        return out
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass

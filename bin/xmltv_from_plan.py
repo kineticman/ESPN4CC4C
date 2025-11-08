@@ -1,199 +1,176 @@
 #!/usr/bin/env python3
-import argparse, sqlite3, sys, json, os
+# -*- coding: utf-8 -*-
+"""
+xmltv_from_plan.py — Build XMLTV from ESPN4CC4C DB plan.
+
+- Channels are DB-authoritative from `channel` (id, name, chno, active).
+- Programmes come from latest plan in `plan_slot`.
+- Time format: XMLTV "YYYYMMDDHHMMSS +0000".
+- Header: generator-info-name="espn-clean-v2.1".
+"""
+
+import argparse
+import os
+import sys
+import sqlite3
 from datetime import datetime, timezone
-import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 
-try:
-    from config import (
-        RESOLVER_BASE as CFG_RESOLVER_BASE,
-        PLACEHOLDER_TITLE as CFG_PH_TITLE,
-        PLACEHOLDER_SUBTITLE as CFG_PH_SUBTITLE,
-        PLACEHOLDER_SUMMARY as CFG_PH_SUMMARY,
-    )
-except Exception:
-    CFG_RESOLVER_BASE = "http://127.0.0.1:8094"
-    CFG_PH_TITLE = "Stand By"
-    CFG_PH_SUBTITLE = ""
-    CFG_PH_SUMMARY = "No live event scheduled"
+GENERATOR = 'espn-clean-v2.1'
 
-PH_TITLE    = os.getenv("VC_PLACEHOLDER_TITLE",   CFG_PH_TITLE)
-PH_SUBTITLE = os.getenv("VC_PLACEHOLDER_SUBTITLE",CFG_PH_SUBTITLE)
-PH_SUMMARY  = os.getenv("VC_PLACEHOLDER_SUMMARY", CFG_PH_SUMMARY)
-LAN_ORIGIN  = (os.getenv("VC_RESOLVER_ORIGIN") or os.getenv("VC_RESOLVER_BASE_URL") or CFG_RESOLVER_BASE)
 
-def iso_to_xmltv(ts: str) -> str:
-    dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc)
-    return dt.strftime("%Y%m%d%H%M%S +0000")
-
-def _row_get(r, k):
-    try: return r[k]
-    except Exception: return None
-
-def conn_open(path):
-    c = sqlite3.connect(path)
-    c.row_factory = sqlite3.Row
-    return c
-
-def have_table(conn, name: str) -> bool:
-    return bool(conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
-    ).fetchone())
-
-def latest_plan_id(conn):
-    r = conn.execute("SELECT MAX(plan_id) AS pid FROM plan_slot").fetchone()
-    return int(r["pid"]) if r and r["pid"] is not None else None
-
-def compute_window(conn, pid: int):
-    r = conn.execute(
-        "SELECT MIN(start_utc) AS vfrom, MAX(end_utc) AS vto FROM plan_slot WHERE plan_id=?", (pid,)
-    ).fetchone()
-    return (r["vfrom"], r["vto"]) if r else (None, None)
-
-def read_checksum(conn, pid: int):
-    if have_table(conn, "plan_run"):
-        try:
-            r = conn.execute("SELECT checksum FROM plan_run WHERE id=?", (pid,)).fetchone()
-            if r and r["checksum"]: return r["checksum"]
-        except sqlite3.OperationalError:
-            pass
-    if have_table(conn, "plan_meta"):
-        try:
-            cols = {row["name"] for row in conn.execute("PRAGMA table_info(plan_meta)")}
-            key = "plan_id" if "plan_id" in cols else ("id" if "id" in cols else None)
-            if key and "checksum" in cols:
-                r = conn.execute(f"SELECT checksum FROM plan_meta WHERE {key}=?", (pid,)).fetchone()
-                if r and r["checksum"]: return r["checksum"]
-        except sqlite3.OperationalError:
-            pass
-    return None
-
-def load_channels(conn):
-    return conn.execute("SELECT id, chno, name FROM channel WHERE active=1 ORDER BY chno ASC").fetchall()
-
-def load_slots(conn, pid):
-    q = """
-    SELECT
-      s.channel_id AS chan,
-      s.kind       AS slot_kind,
-      s.start_utc  AS slot_start,
-      s.end_utc    AS slot_stop,
-      s.event_id   AS event_id,
-      e.title      AS event_title,
-      e.subtitle   AS event_subtitle,
-      e.summary    AS event_summary,
-      e.sport      AS event_sport,
-      e.image      AS event_image,
-      e.start_utc  AS event_start
-    FROM plan_slot s
-    LEFT JOIN events e ON e.id = s.event_id
-    WHERE s.plan_id = ?
-    ORDER BY s.channel_id, s.start_utc
+def iso_to_xmltv(iso: str) -> str:
     """
-    return conn.execute(q, (pid,)).fetchall()
+    Convert ISO8601 like '2025-11-08T02:30:00+00:00' to '20251108023000 +0000'.
+    Assumes UTC offset is present; if missing, treats as UTC.
+    """
+    if not iso:
+        return ""
+    s = iso.strip()
+    # tolerate 'YYYY-MM-DDTHH:MM:SS' (naive) and '+00:00' variant
+    if s.endswith('Z'):
+        s = s[:-1] + '+00:00'
+    if '+' not in s[10:] and '-' not in s[10:]:
+        s += '+00:00'
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.astimezone(timezone.utc)
+        return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
+    except Exception:
+        # last-ditch: strip offset manually
+        try:
+            base = s.split('+', 1)[0].split('-', 1)[0] if '+' in s else s.split('-', 1)[0]
+            dt = datetime.fromisoformat(base)
+            return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
+        except Exception:
+            return ""
 
-def build_xml(ch_rows, slots, resolver_base, meta):
-    tv = ET.Element("tv", {"generator-info-name": "espn-clean-v2.0"})
-    tv.append(ET.Comment(
-        f" plan_id={meta.get('id')} valid_from={meta.get('valid_from')} "
-        f"valid_to={meta.get('valid_to')} checksum={meta.get('checksum')} "
-    ))
 
-    # channels
-    for ch in ch_rows:
-        c = ET.SubElement(tv, "channel", id=str(ch["id"]))  # cast to str (safety)
-        ET.SubElement(c, "display-name").text = ch["name"]
-        ET.SubElement(c, "lcn").text = str(ch["chno"])
+def fetch_channels(conn: sqlite3.Connection):
+    """
+    Return list of dicts: {id(str), name(str), lcn(str)} for active channels.
+    """
+    rows = conn.execute("""
+        SELECT id, name, chno, COALESCE(active,1) AS active
+        FROM channel
+        WHERE COALESCE(active,1)=1
+        ORDER BY COALESCE(chno,id)
+    """).fetchall()
 
-    # programmes
-    programmes = 0
-    for r in slots:
-        chan = r["chan"]
-        start_str = r["slot_start"]
-        if _row_get(r,"slot_kind") == "event" and _row_get(r,"event_start"):
-            if r["event_start"] < start_str:
-                start_str = r["event_start"]
+    out = []
+    for r in rows:
+        ch_id = int(r[0])
+        name = (r[1] or f"ESPN+ EPlus {ch_id}").strip()
+        chno = r[2]
+        lcn = None
+        try:
+            lcn = int(chno) if chno is not None else None
+        except Exception:
+            lcn = None
+        if lcn is None:
+            lcn = 20009 + ch_id
+        out.append({"id": str(ch_id), "name": name, "lcn": str(lcn)})
+    return out
 
-        start = iso_to_xmltv(start_str)
-        stop  = iso_to_xmltv(r["slot_stop"])
 
-        p = ET.SubElement(tv, "programme",
-                          channel=str(chan),  # cast to str (safety)
-                          start=start, stop=stop)
+def fetch_rows_latest_plan(conn: sqlite3.Connection):
+    """
+    Returns list of rows for the latest plan_id in plan_slot.
+    Each row should provide: channel_id, start_utc, end_utc, kind, title.
+    """
+    row = conn.execute("SELECT MAX(plan_id) AS pid FROM plan_slot").fetchone()
+    if not row or row["pid"] is None:
+        return None, []
 
-        title_txt = (r["event_title"] or "").strip()
-        if r["slot_kind"] != "event" or not title_txt:
-            title_txt = PH_TITLE
-        ET.SubElement(p, "title").text = title_txt
+    pid = int(row["pid"])
+    rows = conn.execute("""
+        SELECT channel_id, start_utc, end_utc, kind, title
+        FROM plan_slot
+        WHERE plan_id = ?
+        ORDER BY channel_id, start_utc
+    """, (pid,)).fetchall()
+    return pid, rows
 
-        if r["event_subtitle"]:
-            ET.SubElement(p, "sub-title").text = r["event_subtitle"]
 
-        desc_parts = []
-        if r["event_summary"]:
-            desc_parts.append(str(r["event_summary"]).strip())
-        sport_txt = (r["event_sport"] or "").strip()
-        if sport_txt:
-            desc_parts.append(sport_txt)
-        if title_txt:
-            desc_parts.append(title_txt)
-        if desc_parts:
-            ET.SubElement(p, "desc").text = " — ".join([x for x in desc_parts if x])
+def write_channels(f, channels):
+    for ch in channels:
+        cid = escape(ch["id"])
+        name = escape(ch["name"])
+        lcn = escape(ch["lcn"])
+        f.write(f'  <channel id="{cid}">\n')
+        f.write(f'    <display-name>{name}</display-name>\n')
+        f.write(f'    <lcn>{lcn}</lcn>\n')
+        f.write('  </channel>\n')
 
-        sport = (r["event_sport"] or "").strip()
-        if r["slot_kind"] == "event" and sport:
-            ET.SubElement(p, "category").text = "Sports"
-            ET.SubElement(p, "category").text = sport
-            ET.SubElement(p, "category").text = "Sports Event"
-            ET.SubElement(p, "category").text = "Live"
 
-        if r["event_image"]:
-            ET.SubElement(p, "icon", {"src": r["event_image"]})
+def write_programmes(f, rows):
+    for r in rows:
+        cid = str(r["channel_id"])
+        start = iso_to_xmltv(r["start_utc"])
+        stop = iso_to_xmltv(r["end_utc"])
+        kind = (r["kind"] or "").strip()
+        title = r["title"] or ("Sports" if kind == "event" else "Stand By")
 
-        ET.SubElement(p, "url").text = f"{resolver_base}/vc/{chan}"
-        programmes += 1
+        f.write(f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n')
+        f.write(f'    <title>{escape(title)}</title>\n')
+        # minimal, clean — add <desc/> here if you want later
+        # tag live-ish events (optional): uncomment if you'd like a <live/> node for events
+        # if kind == "event":
+        #     f.write('    <live/>\n')
+        f.write('  </programme>\n')
 
-    def indent(e, level=0):
-        i = "\n" + level * "  "
-        if len(e):
-            if not e.text or not e.text.strip():
-                e.text = i + "  "
-            for child in e:
-                indent(child, level + 1)
-            if not child.tail or not child.tail.strip():
-                child.tail = i
-        if level and (not e.tail or not e.tail.strip()):
-            e.tail = i
-
-    indent(tv)
-    return ET.ElementTree(tv), programmes
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--db", required=True)
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--resolver-base", default=LAN_ORIGIN)
+    ap = argparse.ArgumentParser(description="Generate XMLTV from latest plan.")
+    ap.add_argument("--db", default="data/eplus_vc.sqlite3", help="SQLite DB path")
+    ap.add_argument("--out", default="out/epg.xml", help="Output XMLTV path")
     args = ap.parse_args()
 
-    conn = conn_open(args.db)
-    pid = latest_plan_id(conn)
-    if pid is None:
-        print(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
-                          "mod": "xmltv_from_plan", "event": "no_active_plan"}))
-        sys.exit(0)
+    db_path = args.db
+    out_path = args.out
 
-    vfrom, vto = compute_window(conn, pid)
-    checksum = read_checksum(conn, pid)
-    meta = {"id": pid, "valid_from": vfrom, "valid_to": vto, "checksum": checksum}
+    print(f"[xmltv] db={db_path}")
+    print(f"[xmltv] out={out_path}")
 
-    channels = load_channels(conn)
-    slots    = load_slots(conn, pid)
-    tree, n  = build_xml(channels, slots, args.resolver_base, meta)
-    tree.write(args.out, encoding="utf-8", xml_declaration=True)
-    print(json.dumps({
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "mod": "xmltv_from_plan", "event": "xmltv_written",
-        "plan_id": pid, "out": args.out, "channels": len(channels), "programmes": n
-    }))
+    if not os.path.isfile(db_path):
+        print(f"FATAL: DB not found at {db_path}", file=sys.stderr)
+        sys.exit(2)
+
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        channels = fetch_channels(conn)
+        pid, rows = fetch_rows_latest_plan(conn)
+        if pid is None:
+            print("FATAL: No plan rows in plan_slot", file=sys.stderr)
+            sys.exit(3)
+
+        print(f"[xmltv] fetched rows (latest plan only): {len(rows)}")
+
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+            f.write(f'<tv generator-info-name="{GENERATOR}">\n')
+
+            # Channels first (authoritative)
+            write_channels(f, channels)
+
+            # Programmes
+            write_programmes(f, rows)
+
+            f.write('</tv>\n')
+
+        print("[xmltv] wrote XML successfully")
+        return 0
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
