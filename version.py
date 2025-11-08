@@ -1,4 +1,4 @@
 # auto-generated
-VERSION = "v3.91"
+VERSION = 'v4.1.2'
 def get_version() -> str:
     return VERSION

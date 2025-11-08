@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # file: bin/build_plan.py
-# ESPN Clean v2.1 — canonical plan builder (events -> plan_run/plan_slot)
+# ESPN Clean v2.0 — canonical plan builder (events -> plan_run/plan_slot)
 # Version with "sticky lanes" via event_lane table
-# PATCHED: Fixed event duplication, grid alignment, and channel naming
 
 import argparse, os, json, sqlite3, hashlib
 try:
@@ -11,7 +10,7 @@ try:
 except Exception:
     BUILD_VERSION = "unknown"
     RUNTIME_VERSION = "unknown"
-
+RUNTIME_VERSION = get_version()
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -30,7 +29,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.2-sticky-patched"
+VERSION = "2.2.0-sticky"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -59,8 +58,7 @@ def make_default_lanes(n:int=40, start_chno:int=None):
         start_chno = CFG_CHANNEL_START_CHNO
     lanes = []
     for i in range(1, n+1):
-        # PATCHED: Consistent naming format
-        lanes.append((f"eplus{i:02d}", start_chno + (i-1), f"ESPN+ EPlus {i}", "ESPN+ VC"))
+        lanes.append((f"eplus{i}", start_chno + (i-1), f"ESPN+ EPlus {i}", "ESPN+ VC"))
     return lanes
 
 def seed_channels_if_empty(conn:sqlite3.Connection, nlanes:int=40):
@@ -78,7 +76,7 @@ def seed_channels_if_empty(conn:sqlite3.Connection, nlanes:int=40):
     return len(lanes)
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="ESPN Clean v2.1 Plan Builder (Patched)")
+    ap = argparse.ArgumentParser(description="ESPN Clean v2.0 Plan Builder")
     ap.add_argument("--db", required=True)
     ap.add_argument("--valid-hours", type=int, default=CFG_VALID_HOURS)
     ap.add_argument("--tz", default=CFG_TZ)
@@ -169,12 +167,10 @@ def _seed_event_lane_from_latest_plan(conn):
     return len(events)
 
 def _floor_to_step(dt_obj, minutes: int):
-    """Floor datetime to the nearest step boundary."""
     m = (dt_obj.minute // minutes) * minutes
     return dt_obj.replace(minute=m, second=0, microsecond=0)
 
 def _ceil_to_step(dt_obj, minutes: int):
-    """Ceil datetime to the nearest step boundary."""
     base = _floor_to_step(dt_obj, minutes)
     if base < dt_obj:
         base = base + timedelta(minutes=minutes)
@@ -223,24 +219,12 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
     for e in norm_events:
         preferred = sticky_map.get(e["id"])
         chosen = None
-        
-        # Helper: Check if a channel has conflicting event at this exact start time
-        def has_conflict_at(cid, start_time):
-            """Returns True if channel already has an event starting at this exact time"""
-            tl = timelines[cid]
-            if not tl:
-                return False
-            # Check if last event starts at the same time (most common case)
-            if tl[-1][0] == start_time:
-                return True
-            # Edge case: check all events in case they're not in perfect order
-            return any(ev[0] == start_time for ev in tl)
 
-        # 1) Sticky lane if free AND no conflict
+        # 1) Sticky lane if free
         if preferred in timelines:
             tl = timelines[preferred]
             free_at = tl[-1][1] if tl else start_dt_utc
-            if free_at <= e["_s"] and not has_conflict_at(preferred, e["_s"]):
+            if free_at <= e["_s"]:
                 chosen = preferred
 
         # 2) Earliest-free lane (deterministic by chno)
@@ -250,11 +234,8 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
             for cid in channels_sorted:
                 tl = timelines[cid]
                 free_at = tl[-1][1] if tl else start_dt_utc
-                # PATCHED: Also check for simultaneous event conflicts
-                if free_at <= e["_s"] and not has_conflict_at(cid, e["_s"]):
-                    if best_free is None or free_at < best_free:
-                        best_free = free_at
-                        best_cid = cid
+                if free_at <= e["_s"] and (best_free is None or free_at < best_free):
+                    best_free = free_at; best_cid = cid
             if best_cid is None:
                 # no lane free yet: take the one that frees earliest, start when free
                 cid = min(channels_sorted, key=lambda k: timelines[k][-1][1] if timelines[k] else start_dt_utc)
@@ -291,86 +272,18 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
                                "kind": "placeholder", "placeholder_reason": "tail_gap"})
     plan_slots.sort(key=lambda r:(r["channel_id"], r["start"]))
 
-    # PATCHED: Snap and segment differently for events vs placeholders
+    # Snap all slots to grid & split across boundaries
     snapped = []
     for s in plan_slots:
-        if s["kind"] == "event":
-            # Events: keep whole, just align start/end to grid boundaries
-            aligned_start = _floor_to_step(s["start"], align_minutes)
-            aligned_end = _ceil_to_step(s["end"], align_minutes)
+        for seg_s, seg_e in _segmentize(s["start"], s["end"], align_minutes):
             snapped.append({
                 "channel_id": s["channel_id"],
-                "event_id": s["event_id"],
-                "start": aligned_start.replace(second=0, microsecond=0),
-                "end": aligned_end.replace(second=0, microsecond=0),
-                "kind": "event",
-                "placeholder_reason": None,
+                "event_id": s["event_id"] if s["kind"] == "event" else None,
+                "start": seg_s.replace(second=0, microsecond=0),
+                "end":   seg_e.replace(second=0, microsecond=0),
+                "kind":  s["kind"] if s["kind"] == "event" else "placeholder",
+                "placeholder_reason": s["placeholder_reason"] if s["kind"] != "event" else None,
             })
-        else:
-            # Placeholders: split across grid boundaries for better visual alignment
-            for seg_s, seg_e in _segmentize(s["start"], s["end"], align_minutes):
-                snapped.append({
-                    "channel_id": s["channel_id"],
-                    "event_id": None,
-                    "start": seg_s.replace(second=0, microsecond=0),
-                    "end": seg_e.replace(second=0, microsecond=0),
-                    "kind": "placeholder",
-                    "placeholder_reason": s["placeholder_reason"],
-                })
-    
-    snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
-    
-    # PATCHED: Remove overlapping placeholders that conflict with events
-    # When events get floor-aligned, they can overlap with placeholder segments
-    # that were created before alignment. Remove any placeholder that overlaps with an event.
-    cleaned = []
-    snapped_by_channel = {}
-    for slot in snapped:
-        cid = slot["channel_id"]
-        if cid not in snapped_by_channel:
-            snapped_by_channel[cid] = []
-        snapped_by_channel[cid].append(slot)
-    
-    for cid in sorted(snapped_by_channel.keys()):
-        slots = snapped_by_channel[cid]
-        i = 0
-        while i < len(slots):
-            current = slots[i]
-            
-            # If this is a placeholder, check if it overlaps with next event
-            if current["kind"] == "placeholder" and i + 1 < len(slots):
-                next_slot = slots[i + 1]
-                if next_slot["kind"] == "event" and current["end"] > next_slot["start"]:
-                    # Overlap detected: truncate or skip placeholder
-                    if current["start"] < next_slot["start"]:
-                        # Truncate placeholder to end where event starts
-                        current["end"] = next_slot["start"]
-                        cleaned.append(current)
-                    # else: placeholder completely overlapped, skip it
-                    i += 1
-                    continue
-            
-            # PATCHED: Also check for event-to-event overlaps (shouldn't happen but safety net)
-            if current["kind"] == "event" and i + 1 < len(slots):
-                next_slot = slots[i + 1]
-                if next_slot["kind"] == "event" and current["end"] > next_slot["start"]:
-                    # Event-to-event overlap detected - this is a scheduling error
-                    # Log it and skip the overlapping event (keep first one)
-                    jlog(level="warning", event="event_overlap_detected", 
-                         channel_id=cid, 
-                         event1_start=iso(current["start"]), 
-                         event1_end=iso(current["end"]),
-                         event2_start=iso(next_slot["start"]),
-                         event2_end=iso(next_slot["end"]),
-                         action="skipped_second_event")
-                    cleaned.append(current)
-                    i += 2  # Skip the overlapping event
-                    continue
-            
-            cleaned.append(current)
-            i += 1
-    
-    snapped = cleaned
     snapped.sort(key=lambda r:(r["channel_id"], r["start"]))
 
     # Persist new sticky choices
