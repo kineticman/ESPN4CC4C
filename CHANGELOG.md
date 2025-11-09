@@ -1,3 +1,8 @@
+## v4.8 — 2025-11-08
+- Planner default start now uses **now minus grace** (default 4h) when --start is omitted.
+- Fixes in-progress events being truncated to the plan window edge (e.g., 9:00 PM artifacts).
+- Log signal: `default_start_now_minus_grace` with `grace_hours`.
+
 ## v4.1.3 — 2025-11-08
 - Add <category>ESPN4CC4C</category> to all event programmes (not placeholders) for easier downstream filtering
 
