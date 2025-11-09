@@ -30,7 +30,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.3-sticky-patched"
+VERSION = "2.1.4-sticky-patched"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -205,8 +205,17 @@ def build_plan(conn, channels, events, start_dt_utc:datetime, end_dt_utc:datetim
             continue
         if t <= start_dt_utc or s >= end_dt_utc:
             continue
+        
+        # PATCHED: Preserve duration when clipping at window boundaries
+        original_duration = t - s
         s = max(s, start_dt_utc)
         t = min(t, end_dt_utc)
+        
+        # If event was clipped at start, extend end to preserve duration (if possible)
+        if s > datetime.fromisoformat(e["start_utc"]).astimezone(timezone.utc):
+            desired_end = s + original_duration
+            t = min(desired_end, end_dt_utc)  # Don't exceed window end
+        
         if t <= s:
             continue
         e2 = dict(e); e2["_s"]=s; e2["_t"]=t
