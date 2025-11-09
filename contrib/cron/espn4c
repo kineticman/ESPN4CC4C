@@ -1,0 +1,13 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# --- Choose one refresh cadence ---
+
+# (A) simple daily refresh at 02:00
+#0 2 * * * root /app/bin/refresh_in_container.sh >> /app/logs/schedule.log 2>&1
+
+# (B) example: every 3 hours between 09:00–23:00 with jitter + lock
+7 9-23/3 * * * root bash -lc 'sleep $((RANDOM % 60)); flock -n /tmp/espn4cc.lock /app/bin/refresh_in_container.sh >> /app/logs/cron.log 2>&1'
+
+# Weekly VACUUM (Sun 03:17)
+17 3 * * 0 root sqlite3 /app/data/eplus_vc.sqlite3 'VACUUM;' >> /app/logs/schedule.log 2>&1
