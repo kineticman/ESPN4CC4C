@@ -459,18 +459,15 @@ def main() -> None:
                 start_local = dt.astimezone(tz)
             start_local = start_local.replace(second=0, microsecond=0)
     else:
-        prev = _get_previous_plan_start(conn)
-        if prev:
-            try:
-                start_local = datetime.fromisoformat(prev)
-                if start_local.tzinfo is None:
-                    start_local = start_local.replace(tzinfo=timezone.utc)
-                start_local = start_local.astimezone(tz).replace(second=0, microsecond=0)
-                jlog(event="default_start_from_previous_plan", prev_utc=prev)
-            except Exception:
-                start_local = datetime.now(tz).replace(second=0, microsecond=0)
-        else:
-            start_local = datetime.now(tz).replace(second=0, microsecond=0)
+        # NEW DEFAULT: use "now minus grace hours" to ensure in-progress events
+        # keep their true start times instead of being clamped to the window edge.
+        # Adjustable via env BUILDER_DEFAULT_START_GRACE_HOURS (default 2).
+        try:
+            grace_hours = int(os.environ.get("BUILDER_DEFAULT_START_GRACE_HOURS", "4"))
+        except Exception:
+            grace_hours = 2
+        start_local = (datetime.now(tz) - timedelta(hours=grace_hours)).replace(second=0, microsecond=0)
+        jlog(event="default_start_now_minus_grace", grace_hours=grace_hours)
 
     start_utc = start_local.astimezone(timezone.utc)
     start_utc = _floor_to_step(start_utc, args.align)
