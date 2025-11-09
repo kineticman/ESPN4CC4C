@@ -124,7 +124,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Base64 (UTF8), one line
 $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cron))
 
-docker compose exec -T espn4cc sh -lc "echo $b64 | base64 -d > /etc/cron.d/espn4cc && chmod 644 /etc/cron.d/espn4cc && mkdir -p /app/logs && : > /app/logs/cron.log && chmod 666 /app/logs/cron.log && pkill -HUP cron || true"
+docker compose exec -T espn4cc bash -lc "echo $b64 | base64 -d > /etc/cron.d/espn4cc && chmod 644 /etc/cron.d/espn4cc && mkdir -p /app/logs && : > /app/logs/cron.log && chmod 666 /app/logs/cron.log && pkill -HUP cron || true"
 
 # --- Final tests & summary ---
 Write-Host ""
