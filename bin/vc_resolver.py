@@ -521,19 +521,17 @@ def whatson(
         if eid.startswith("espn-watch:"):
             eid = eid[11:]
 
-        # Build deeplink URL (full UID)
-        eid_short = (str(eid).split(':', 1)[0] if eid else None)
-        deeplink_full = (f"sportscenter://x-callback-url/showWatchStream?playID={eid_short}" if eid_short else None)
-
-        play_id_short   = eid.split(':', 1)[0]
-        deeplink_short  = f"sportscenter://x-callback-url/showWatchStream?playID={play_id_short}"
+        # Build deeplinks with proper None handling
+        play_id_short = eid.split(':', 1)[0] if eid else None
+        deeplink_full = f"sportscenter://x-callback-url/showWatchStream?playID={eid}" if eid else None
+        deeplink_short = f"sportscenter://x-callback-url/showWatchStream?playID={play_id_short}" if play_id_short else None
+        
         # TXT modes
         if want_txt_deeplink_full:
-            return Response(content=deeplink_short, media_type="text/plain", status_code=200)
+            return Response(content=deeplink_full, media_type="text/plain", status_code=200)
         if want_txt_deeplink_short:
             return Response(content=deeplink_short, media_type="text/plain", status_code=200)
         if want_txt_playid_short:
-            play_id_short = eid.split(':', 1)[0]
             return Response(content=play_id_short, media_type="text/plain", status_code=200)
 
         # JSON body
@@ -617,7 +615,6 @@ def whatson_all(at: Optional[str] = None, include: Optional[str] = None, deeplin
         for lane in sorted(lanes, key=_sort_key):
             kind, eid = active.get(lane, (None, None))
             uid = (eid[11:] if (kind == "event" and eid and eid.startswith("espn-watch:")) else (eid if kind == "event" else None))
-            eid_short = (str(eid).split(':', 1)[0] if eid else None)
             short = (str(uid).split(':', 1)[0] if uid else None)
             item = {"lane": _to_lane_label(lane), "event_uid": uid, "deeplink_url": (f"sportscenter://x-callback-url/showWatchStream?playID={short}" if short else None)}
             items.append(item)
