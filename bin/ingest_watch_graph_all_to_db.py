@@ -98,7 +98,19 @@ def ensure_schema(conn: sqlite3.Connection):
       sport     TEXT,
       subtitle  TEXT,
       summary   TEXT,
-      image     TEXT
+      image     TEXT,
+      network TEXT,
+      network_id TEXT,
+      network_short TEXT,
+      league_name TEXT,
+      league_id TEXT,
+      league_abbr TEXT,
+      sport_id TEXT,
+      sport_abbr TEXT,
+      packages TEXT,
+      event_type TEXT,
+      airing_id TEXT,
+      simulcast_airing_id TEXT
     );
     CREATE TABLE IF NOT EXISTS feeds(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,19 +120,52 @@ def ensure_schema(conn: sqlite3.Connection):
     );
     """)
 
+def migrate_schema(conn: sqlite3.Connection):
+    """Add new columns to existing databases"""
+    cursor = conn.cursor()
+    
+    # Get existing columns from events table
+    cursor.execute("PRAGMA table_info(events)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    
+    # Define new columns that should exist
+    new_cols = {
+        "network": "TEXT",
+        "network_id": "TEXT",
+        "network_short": "TEXT",
+        "league_name": "TEXT",
+        "league_id": "TEXT",
+        "league_abbr": "TEXT",
+        "sport_id": "TEXT",
+        "sport_abbr": "TEXT",
+        "packages": "TEXT",
+        "event_type": "TEXT",
+        "airing_id": "TEXT",
+        "simulcast_airing_id": "TEXT",
+    }
+    
+    # Add missing columns
+    added = 0
+    for col, col_type in new_cols.items():
+        if col not in existing_cols:
+            print(f"[migration] Adding column: {col} {col_type}")
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col} {col_type}")
+            added += 1
+    
+    if added > 0:
+        print(f"[migration] Added {added} new column(s) to events table")
+        conn.commit()
+
 def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
-    cols = ("id","start_utc","stop_utc","title","sport","subtitle","summary","image")
+    cols = ("id","start_utc","stop_utc","title","sport","subtitle","summary","image",
+            "network","network_id","network_short","league_name","league_id","league_abbr",
+            "sport_id","sport_abbr","packages","event_type","airing_id","simulcast_airing_id")
     vals = [row.get(k) for k in cols]
+    placeholders = ",".join(["?"] * len(cols))
+    updates = ",".join([f"{c}=COALESCE(excluded.{c},events.{c})" for c in cols[1:]])  # skip id
     conn.execute(f"""
-    INSERT INTO events({",".join(cols)}) VALUES(?,?,?,?,?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET
-      start_utc=excluded.start_utc,
-      stop_utc=excluded.stop_utc,
-      title=COALESCE(excluded.title,events.title),
-      sport=COALESCE(excluded.sport,events.sport),
-      subtitle=COALESCE(excluded.subtitle,events.subtitle),
-      summary=COALESCE(excluded.summary,events.summary),
-      image=COALESCE(excluded.image,events.image)
+    INSERT INTO events({",".join(cols)}) VALUES({placeholders})
+    ON CONFLICT(id) DO UPDATE SET {updates}
     """, vals)
 
 def replace_feeds(conn: sqlite3.Connection, event_id: str, urls: List[str]):
@@ -164,7 +209,9 @@ def main():
 
     tz = ZoneInfo(args.tz)
     start_day = datetime.now(tz).date()
-    conn = connect(args.db); ensure_schema(conn)
+    conn = connect(args.db)
+    ensure_schema(conn)
+    migrate_schema(conn)  # Auto-upgrade existing databases
 
     total = 0
     with conn:
@@ -172,16 +219,44 @@ def main():
             day_iso = (start_day + timedelta(days=d)).strftime("%Y-%m-%d")
             airings = post_airings(day_iso, args.tz)
             for a in airings:
+                # Basic event info
                 title = a.get("shortName") or a.get("name")
-                sport = (a.get("sport") or {}).get("name")
-                start = a.get("startDateTime"); stop = a.get("endDateTime")
+                start = a.get("startDateTime")
+                stop = a.get("endDateTime")
                 base_id = str(a.get("id") or a.get("airingId") or a.get("simulcastAiringId") or title or "evt")
                 if not start or not stop: continue
+                
+                # Extract nested objects
+                sport_obj = a.get("sport") or {}
+                league_obj = a.get("league") or {}
+                network_obj = a.get("network") or {}
+                packages_list = a.get("packages") or []
+                
+                # Convert packages to JSON string
+                packages_str = json.dumps([p.get("name") for p in packages_list if p.get("name")]) if packages_list else None
+                
                 eid = stable_event_id("espn-watch", base_id)
                 upsert_event(conn, {
-                    "id": eid, "start_utc": start, "stop_utc": stop,
-                    "title": title, "sport": sport, "subtitle": None,
-                    "summary": (a.get("league") or {}).get("name"), "image": None
+                    "id": eid,
+                    "start_utc": start,
+                    "stop_utc": stop,
+                    "title": title,
+                    "sport": sport_obj.get("name"),
+                    "subtitle": None,
+                    "summary": league_obj.get("name"),
+                    "image": None,
+                    "network": network_obj.get("name"),
+                    "network_id": network_obj.get("id"),
+                    "network_short": network_obj.get("shortName"),
+                    "league_name": league_obj.get("name"),
+                    "league_id": league_obj.get("id"),
+                    "league_abbr": league_obj.get("abbreviation"),
+                    "sport_id": sport_obj.get("id"),
+                    "sport_abbr": sport_obj.get("abbreviation"),
+                    "packages": packages_str,
+                    "event_type": a.get("type"),
+                    "airing_id": a.get("airingId"),
+                    "simulcast_airing_id": a.get("simulcastAiringId"),
                 })
                 replace_feeds(conn, eid, [espn_player_url(a)])
                 total += 1
