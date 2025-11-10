@@ -734,6 +734,276 @@ def whatson_all(
     return JSONResponse({"ok": True, "at": when_iso, "items": items})
 
 
+@app.get("/filters", tags=["admin"], summary="Show available filter options")
+def get_filters_info():
+    """
+    Display available filter options from current database.
+    Shows networks, sports, leagues, event types, and packages.
+    Helps users configure their filters.ini file.
+    """
+
+    dbp = os.environ.get("VC_DB", "data/eplus_vc.sqlite3")
+
+    try:
+        conn = sqlite3.connect(
+            f"file:{dbp}?mode=ro", uri=True, check_same_thread=False, timeout=2.0
+        )
+        cursor = conn.cursor()
+
+        # Get all filter options
+        options = {}
+
+        # Networks
+        cursor.execute(
+            """
+            SELECT network, COUNT(*) as cnt
+            FROM events
+            WHERE network IS NOT NULL AND network != ''
+            GROUP BY network
+            ORDER BY cnt DESC, network
+        """
+        )
+        options["networks"] = cursor.fetchall()
+
+        # Sports
+        cursor.execute(
+            """
+            SELECT sport, COUNT(*) as cnt
+            FROM events
+            WHERE sport IS NOT NULL AND sport != ''
+            GROUP BY sport
+            ORDER BY cnt DESC, sport
+        """
+        )
+        options["sports"] = cursor.fetchall()
+
+        # Leagues
+        cursor.execute(
+            """
+            SELECT league_name, COUNT(*) as cnt
+            FROM events
+            WHERE league_name IS NOT NULL AND league_name != ''
+            GROUP BY league_name
+            ORDER BY cnt DESC, league_name
+        """
+        )
+        options["leagues"] = cursor.fetchall()
+
+        # Event types
+        cursor.execute(
+            """
+            SELECT event_type, COUNT(*) as cnt
+            FROM events
+            WHERE event_type IS NOT NULL AND event_type != ''
+            GROUP BY event_type
+            ORDER BY cnt DESC
+        """
+        )
+        options["event_types"] = cursor.fetchall()
+
+        # Packages
+        cursor.execute(
+            """
+            SELECT packages, COUNT(*) as cnt
+            FROM events
+            WHERE packages IS NOT NULL AND packages != '' AND packages != '[]'
+            GROUP BY packages
+            ORDER BY cnt DESC
+            LIMIT 20
+        """
+        )
+        options["packages"] = cursor.fetchall()
+
+        conn.close()
+
+        # Format as HTML
+        html = """
+        <html>
+        <head>
+            <title>ESPN4CC4C - Available Filters</title>
+            <meta charset="UTF-8">
+            <style>
+                body {
+                    font-family: 'Consolas', 'Monaco', monospace;
+                    background: #1e1e1e;
+                    color: #d4d4d4;
+                    padding: 20px;
+                    max-width: 1200px;
+                    margin: 0 auto;
+                }
+                h1 { color: #4fc3f7; border-bottom: 2px solid #4fc3f7; padding-bottom: 10px; }
+                h2 { color: #81c784; margin-top: 30px; }
+                .section {
+                    background: #252526;
+                    padding: 15px;
+                    margin: 15px 0;
+                    border-radius: 4px;
+                }
+                .item {
+                    padding: 3px 0;
+                    font-family: 'Courier New', monospace;
+                    font-size: 14px;
+                }
+                .count { color: #ffb74d; font-weight: bold; }
+                .tip {
+                    background: #263238;
+                    padding: 20px;
+                    margin: 30px 0;
+                    border-left: 4px solid #4fc3f7;
+                    border-radius: 4px;
+                }
+                pre {
+                    background: #1e1e1e;
+                    padding: 15px;
+                    overflow-x: auto;
+                    border-radius: 4px;
+                    border: 1px solid #333;
+                }
+                code { color: #ce9178; }
+                .intro { background: #252526; padding: 15px; margin: 20px 0; border-radius: 4px; }
+                a { color: #4fc3f7; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>📺 ESPN4CC4C - Available Filter Options</h1>
+            <div class='intro'>
+                <p>These values are from your current database. Use them in your <code>filters.ini</code> file.</p>
+                <p>JSON version: <a href="/filters/json">/filters/json</a></p>
+            </div>
+        """
+
+        # Networks
+        html += "<h2>📺 Networks</h2><div class='section'>"
+        for network, count in options["networks"]:
+            html += f"<div class='item'>{network:<40} <span class='count'>({count:>4} events)</span></div>"
+        html += "</div>"
+
+        # Sports
+        html += "<h2>⚽ Sports</h2><div class='section'>"
+        for sport, count in options["sports"]:
+            html += f"<div class='item'>{sport:<40} <span class='count'>({count:>4} events)</span></div>"
+        html += "</div>"
+
+        # Leagues
+        html += "<h2>🏆 Leagues</h2><div class='section'>"
+        for league, count in options["leagues"]:
+            html += f"<div class='item'>{league:<40} <span class='count'>({count:>4} events)</span></div>"
+        html += "</div>"
+
+        # Event Types
+        html += "<h2>📡 Event Types</h2><div class='section'>"
+        for etype, count in options["event_types"]:
+            html += f"<div class='item'>{etype:<40} <span class='count'>({count:>4} events)</span></div>"
+        html += "</div>"
+
+        # Packages
+        html += "<h2>💰 Packages</h2><div class='section'>"
+        for pkg, count in options["packages"]:
+            pkg_clean = pkg.replace('["', "").replace('"]', "").replace('", "', ", ")
+            html += f"<div class='item'>{pkg_clean:<50} <span class='count'>({count:>4} events)</span></div>"
+        html += "</div>"
+
+        # Example usage
+        html += """
+        <div class='tip'>
+            <h3>💡 Example filters.ini Configuration</h3>
+            <pre>
+[filters]
+# Professional sports only
+enabled_leagues = NFL,NBA,NHL
+
+# No replays
+exclude_event_types = OVER
+
+# Cable TV only (no ESPN+)
+exclude_networks = ESPN+
+require_espn_plus = false
+
+# Remove studio shows (no deeplinks)
+exclude_no_sport = true
+
+# Football and Basketball only
+enabled_sports = Football,Basketball
+            </pre>
+            <p>Place <code>filters.ini</code> in your project root and run <code>update_schedule.sh</code></p>
+        </div>
+        """
+
+        html += "</body></html>"
+
+        return HTMLResponse(content=html)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e), "traceback": traceback.format_exc()})
+
+
+@app.get("/filters/json", tags=["admin"], summary="Get filter options as JSON")
+def get_filters_json():
+    """Return filter options as JSON for programmatic access"""
+
+    dbp = os.environ.get("VC_DB", "data/eplus_vc.sqlite3")
+
+    try:
+        conn = sqlite3.connect(
+            f"file:{dbp}?mode=ro", uri=True, check_same_thread=False, timeout=2.0
+        )
+        cursor = conn.cursor()
+
+        # Get all filter options
+        def get_counts(field):
+            cursor.execute(
+                f"""
+                SELECT {field}, COUNT(*) as cnt
+                FROM events
+                WHERE {field} IS NOT NULL AND {field} != ''
+                GROUP BY {field}
+                ORDER BY cnt DESC
+            """
+            )
+            return [{"name": row[0], "count": row[1]} for row in cursor.fetchall()]
+
+        result = {
+            "networks": get_counts("network"),
+            "sports": get_counts("sport"),
+            "leagues": get_counts("league_name"),
+            "event_types": get_counts("event_type"),
+        }
+
+        # Packages (special handling for JSON field)
+        cursor.execute(
+            """
+            SELECT packages, COUNT(*) as cnt
+            FROM events
+            WHERE packages IS NOT NULL AND packages != '' AND packages != '[]'
+            GROUP BY packages
+            ORDER BY cnt DESC
+            LIMIT 20
+        """
+        )
+        result["packages"] = [
+            {
+                "name": row[0]
+                .replace('["', "")
+                .replace('"]', "")
+                .replace('", "', ", "),
+                "count": row[1],
+            }
+            for row in cursor.fetchall()
+        ]
+
+        # Total events
+        cursor.execute("SELECT COUNT(*) FROM events")
+        result["total_events"] = cursor.fetchone()[0]
+
+        conn.close()
+
+        return JSONResponse(result)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e), "traceback": traceback.format_exc()})
+
+
 @app.get(
     "/channels", tags=["channels"], summary="DB-backed channel list (authoritative)"
 )

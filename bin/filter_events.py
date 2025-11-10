@@ -72,6 +72,9 @@ class EventFilter:
         self.require_espn_plus = self._parse_bool(f.get("require_espn_plus", ""))
         self.exclude_ppv = f.get("exclude_ppv", "false").lower() == "true"
 
+        # Parse studio show / non-sport filter
+        self.exclude_no_sport = f.get("exclude_no_sport", "false").lower() == "true"
+
     def _parse_set(self, value: str) -> Optional[Set[str]]:
         """Parse comma-separated string into set, handling wildcards"""
         value = value.strip()
@@ -218,6 +221,13 @@ class EventFilter:
         if self.exclude_ppv and packages_info["is_ppv"]:
             return False
 
+        # Exclude events with no sport (studio shows, talk shows, news programs)
+        # These typically don't have valid ESPN deeplinks
+        if self.exclude_no_sport:
+            sport = event.get("sport") or event.get("sport_abbr")
+            if not sport:
+                return False
+
         return True
 
     def get_filter_summary(self) -> str:
@@ -256,6 +266,9 @@ class EventFilter:
 
         if self.exclude_ppv:
             lines.append(f"  Exclude PPV: {self.exclude_ppv}")
+
+        if self.exclude_no_sport:
+            lines.append("  Exclude Non-Sport Content: True (studio shows, news)")
 
         if len(lines) == 1:
             return "No filters active (all events included)"
