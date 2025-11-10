@@ -1,0 +1,81 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="1" tvg-name="ESPN+ EPlus 1" tvg-chno="20010" group-title="ESPN+ VC",ESPN+ EPlus 1
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F1
+#EXTINF:-1 tvg-id="2" tvg-name="ESPN+ EPlus 2" tvg-chno="20011" group-title="ESPN+ VC",ESPN+ EPlus 2
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F2
+#EXTINF:-1 tvg-id="3" tvg-name="ESPN+ EPlus 3" tvg-chno="20012" group-title="ESPN+ VC",ESPN+ EPlus 3
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F3
+#EXTINF:-1 tvg-id="4" tvg-name="ESPN+ EPlus 4" tvg-chno="20013" group-title="ESPN+ VC",ESPN+ EPlus 4
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F4
+#EXTINF:-1 tvg-id="5" tvg-name="ESPN+ EPlus 5" tvg-chno="20014" group-title="ESPN+ VC",ESPN+ EPlus 5
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F5
+#EXTINF:-1 tvg-id="6" tvg-name="ESPN+ EPlus 6" tvg-chno="20015" group-title="ESPN+ VC",ESPN+ EPlus 6
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F6
+#EXTINF:-1 tvg-id="7" tvg-name="ESPN+ EPlus 7" tvg-chno="20016" group-title="ESPN+ VC",ESPN+ EPlus 7
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F7
+#EXTINF:-1 tvg-id="8" tvg-name="ESPN+ EPlus 8" tvg-chno="20017" group-title="ESPN+ VC",ESPN+ EPlus 8
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F8
+#EXTINF:-1 tvg-id="9" tvg-name="ESPN+ EPlus 9" tvg-chno="20018" group-title="ESPN+ VC",ESPN+ EPlus 9
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F9
+#EXTINF:-1 tvg-id="10" tvg-name="ESPN+ EPlus 10" tvg-chno="20019" group-title="ESPN+ VC",ESPN+ EPlus 10
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F10
+#EXTINF:-1 tvg-id="11" tvg-name="ESPN+ EPlus 11" tvg-chno="20020" group-title="ESPN+ VC",ESPN+ EPlus 11
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F11
+#EXTINF:-1 tvg-id="12" tvg-name="ESPN+ EPlus 12" tvg-chno="20021" group-title="ESPN+ VC",ESPN+ EPlus 12
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F12
+#EXTINF:-1 tvg-id="13" tvg-name="ESPN+ EPlus 13" tvg-chno="20022" group-title="ESPN+ VC",ESPN+ EPlus 13
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F13
+#EXTINF:-1 tvg-id="14" tvg-name="ESPN+ EPlus 14" tvg-chno="20023" group-title="ESPN+ VC",ESPN+ EPlus 14
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F14
+#EXTINF:-1 tvg-id="15" tvg-name="ESPN+ EPlus 15" tvg-chno="20024" group-title="ESPN+ VC",ESPN+ EPlus 15
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F15
+#EXTINF:-1 tvg-id="16" tvg-name="ESPN+ EPlus 16" tvg-chno="20025" group-title="ESPN+ VC",ESPN+ EPlus 16
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F16
+#EXTINF:-1 tvg-id="17" tvg-name="ESPN+ EPlus 17" tvg-chno="20026" group-title="ESPN+ VC",ESPN+ EPlus 17
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F17
+#EXTINF:-1 tvg-id="18" tvg-name="ESPN+ EPlus 18" tvg-chno="20027" group-title="ESPN+ VC",ESPN+ EPlus 18
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F18
+#EXTINF:-1 tvg-id="19" tvg-name="ESPN+ EPlus 19" tvg-chno="20028" group-title="ESPN+ VC",ESPN+ EPlus 19
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F19
+#EXTINF:-1 tvg-id="20" tvg-name="ESPN+ EPlus 20" tvg-chno="20029" group-title="ESPN+ VC",ESPN+ EPlus 20
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F20
+#EXTINF:-1 tvg-id="21" tvg-name="ESPN+ EPlus 21" tvg-chno="20030" group-title="ESPN+ VC",ESPN+ EPlus 21
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F21
+#EXTINF:-1 tvg-id="22" tvg-name="ESPN+ EPlus 22" tvg-chno="20031" group-title="ESPN+ VC",ESPN+ EPlus 22
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F22
+#EXTINF:-1 tvg-id="23" tvg-name="ESPN+ EPlus 23" tvg-chno="20032" group-title="ESPN+ VC",ESPN+ EPlus 23
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F23
+#EXTINF:-1 tvg-id="24" tvg-name="ESPN+ EPlus 24" tvg-chno="20033" group-title="ESPN+ VC",ESPN+ EPlus 24
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F24
+#EXTINF:-1 tvg-id="25" tvg-name="ESPN+ EPlus 25" tvg-chno="20034" group-title="ESPN+ VC",ESPN+ EPlus 25
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F25
+#EXTINF:-1 tvg-id="26" tvg-name="ESPN+ EPlus 26" tvg-chno="20035" group-title="ESPN+ VC",ESPN+ EPlus 26
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F26
+#EXTINF:-1 tvg-id="27" tvg-name="ESPN+ EPlus 27" tvg-chno="20036" group-title="ESPN+ VC",ESPN+ EPlus 27
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F27
+#EXTINF:-1 tvg-id="28" tvg-name="ESPN+ EPlus 28" tvg-chno="20037" group-title="ESPN+ VC",ESPN+ EPlus 28
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F28
+#EXTINF:-1 tvg-id="29" tvg-name="ESPN+ EPlus 29" tvg-chno="20038" group-title="ESPN+ VC",ESPN+ EPlus 29
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F29
+#EXTINF:-1 tvg-id="30" tvg-name="ESPN+ EPlus 30" tvg-chno="20039" group-title="ESPN+ VC",ESPN+ EPlus 30
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F30
+#EXTINF:-1 tvg-id="31" tvg-name="ESPN+ EPlus 31" tvg-chno="20040" group-title="ESPN+ VC",ESPN+ EPlus 31
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F31
+#EXTINF:-1 tvg-id="32" tvg-name="ESPN+ EPlus 32" tvg-chno="20041" group-title="ESPN+ VC",ESPN+ EPlus 32
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F32
+#EXTINF:-1 tvg-id="33" tvg-name="ESPN+ EPlus 33" tvg-chno="20042" group-title="ESPN+ VC",ESPN+ EPlus 33
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F33
+#EXTINF:-1 tvg-id="34" tvg-name="ESPN+ EPlus 34" tvg-chno="20043" group-title="ESPN+ VC",ESPN+ EPlus 34
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F34
+#EXTINF:-1 tvg-id="35" tvg-name="ESPN+ EPlus 35" tvg-chno="20044" group-title="ESPN+ VC",ESPN+ EPlus 35
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F35
+#EXTINF:-1 tvg-id="36" tvg-name="ESPN+ EPlus 36" tvg-chno="20045" group-title="ESPN+ VC",ESPN+ EPlus 36
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F36
+#EXTINF:-1 tvg-id="37" tvg-name="ESPN+ EPlus 37" tvg-chno="20046" group-title="ESPN+ VC",ESPN+ EPlus 37
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F37
+#EXTINF:-1 tvg-id="38" tvg-name="ESPN+ EPlus 38" tvg-chno="20047" group-title="ESPN+ VC",ESPN+ EPlus 38
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F38
+#EXTINF:-1 tvg-id="39" tvg-name="ESPN+ EPlus 39" tvg-chno="20048" group-title="ESPN+ VC",ESPN+ EPlus 39
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F39
+#EXTINF:-1 tvg-id="40" tvg-name="ESPN+ EPlus 40" tvg-chno="20049" group-title="ESPN+ VC",ESPN+ EPlus 40
+chrome://192.168.86.72:5589/stream?url=http%3A%2F%2F192.168.86.72%3A8094%2Fvc%2F40

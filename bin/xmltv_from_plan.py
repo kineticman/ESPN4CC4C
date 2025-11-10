@@ -12,12 +12,12 @@ PATCHED version with deduplication, fixed LCN, and improved error handling
 
 import argparse
 import os
-import sys
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
-GENERATOR = 'espn-clean-v2.1'
+GENERATOR = "espn-clean-v2.1"
 
 # Try to import channel start from config, fallback to default
 try:
@@ -36,22 +36,24 @@ def iso_to_xmltv(iso: str) -> str:
         return ""
     s = iso.strip()
     # tolerate 'YYYY-MM-DDTHH:MM:SS' (naive) and '+00:00' variant
-    if s.endswith('Z'):
-        s = s[:-1] + '+00:00'
-    if '+' not in s[10:] and '-' not in s[10:]:
-        s += '+00:00'
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    if "+" not in s[10:] and "-" not in s[10:]:
+        s += "+00:00"
     try:
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         dt = dt.astimezone(timezone.utc)
-        return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
+        return dt.strftime("%Y%m%d%H%M%S") + " +0000"
     except Exception as e:
         # last-ditch: strip offset manually
         try:
-            base = s.split('+', 1)[0].split('-', 1)[0] if '+' in s else s.split('-', 1)[0]
+            base = (
+                s.split("+", 1)[0].split("-", 1)[0] if "+" in s else s.split("-", 1)[0]
+            )
             dt = datetime.fromisoformat(base)
-            return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
+            return dt.strftime("%Y%m%d%H%M%S") + " +0000"
         except Exception:
             print(f"WARNING: Failed to parse timestamp '{iso}': {e}", file=sys.stderr)
             return ""
@@ -62,19 +64,21 @@ def fetch_channels(conn: sqlite3.Connection):
     Return list of dicts: {id(str), name(str), lcn(str)} for active channels.
     PATCHED: Fixed LCN calculation to use config value properly.
     """
-    rows = conn.execute("""
+    rows = conn.execute(
+        """
         SELECT id, name, chno, COALESCE(active,1) AS active
         FROM channel
         WHERE COALESCE(active,1)=1
         ORDER BY COALESCE(chno,id)
-    """).fetchall()
+    """
+    ).fetchall()
 
     out = []
     for r in rows:
         ch_id = str(r[0])
         name = (r[1] or f"ESPN+ EPlus {r[0]}").strip()
         chno = r[2]
-        
+
         # PATCHED: Use actual chno from DB, fallback to calculated value
         if chno is not None:
             try:
@@ -83,7 +87,7 @@ def fetch_channels(conn: sqlite3.Connection):
                 lcn = str(CFG_CHANNEL_START_CHNO + int(ch_id) - 1)
         else:
             lcn = str(CFG_CHANNEL_START_CHNO + int(ch_id) - 1)
-        
+
         out.append({"id": ch_id, "name": name, "lcn": lcn})
     return out
 
@@ -99,11 +103,12 @@ def fetch_rows_latest_plan(conn: sqlite3.Connection):
         return None, []
 
     pid = int(row["pid"])
-    rows = conn.execute("""
-        SELECT 
-            ps.channel_id, 
-            ps.start_utc, 
-            ps.end_utc, 
+    rows = conn.execute(
+        """
+        SELECT
+            ps.channel_id,
+            ps.start_utc,
+            ps.end_utc,
             ps.kind,
             COALESCE(e.title, ps.title) AS title,
             e.sport,
@@ -113,7 +118,9 @@ def fetch_rows_latest_plan(conn: sqlite3.Connection):
         LEFT JOIN events e ON ps.event_id = e.id
         WHERE ps.plan_id = ?
         ORDER BY ps.channel_id, ps.start_utc
-    """, (pid,)).fetchall()
+    """,
+        (pid,),
+    ).fetchall()
     return pid, rows
 
 
@@ -124,9 +131,9 @@ def write_channels(f, channels):
         name = escape(ch["name"])
         lcn = escape(ch["lcn"])
         f.write(f'  <channel id="{cid}">\n')
-        f.write(f'    <display-name>{name}</display-name>\n')
-        f.write(f'    <lcn>{lcn}</lcn>\n')
-        f.write('  </channel>\n')
+        f.write(f"    <display-name>{name}</display-name>\n")
+        f.write(f"    <lcn>{lcn}</lcn>\n")
+        f.write("  </channel>\n")
 
 
 def write_programmes(f, rows):
@@ -136,38 +143,38 @@ def write_programmes(f, rows):
     """
     seen = set()  # Track (channel_id, start, stop, title) to detect duplicates
     duplicates_skipped = 0
-    
+
     for r in rows:
         cid = str(r["channel_id"])
         start = iso_to_xmltv(r["start_utc"])
         stop = iso_to_xmltv(r["end_utc"])
         kind = (r["kind"] or "").strip()
         title = r["title"] or ("Sports" if kind == "event" else "Stand By")
-        
+
         # Get additional metadata from events table (sqlite3.Row objects)
         sport = ""
         subtitle = ""
         summary = ""
-        
+
         try:
             sport = (r["sport"] or "").strip() if r["sport"] else ""
         except (KeyError, IndexError):
             pass
-        
+
         try:
             subtitle = (r["subtitle"] or "").strip() if r["subtitle"] else ""
         except (KeyError, IndexError):
             pass
-        
+
         try:
             summary = (r["summary"] or "").strip() if r["summary"] else ""
         except (KeyError, IndexError):
             pass
-        
+
         # Skip entries with invalid timestamps
         if not start or not stop:
             continue
-        
+
         # PATCHED: Deduplication check
         key = (cid, start, stop, title)
         if key in seen:
@@ -175,14 +182,16 @@ def write_programmes(f, rows):
             continue
         seen.add(key)
 
-        f.write(f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n')
-        f.write(f'    <title>{escape(title)}</title>\n')
-        
+        f.write(
+            f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n'
+        )
+        f.write(f"    <title>{escape(title)}</title>\n")
+
         # Add metadata for events only
         if kind == "event":
             # Description - use summary if available, otherwise build from parts
             if summary:
-                f.write(f'    <desc>{escape(summary)}</desc>\n')
+                f.write(f"    <desc>{escape(summary)}</desc>\n")
             elif subtitle or sport or title:
                 desc_parts = []
                 if sport:
@@ -192,24 +201,27 @@ def write_programmes(f, rows):
                 else:
                     desc_parts.append(title)
                 desc = " — ".join(desc_parts)
-                f.write(f'    <desc>{escape(desc)}</desc>\n')
-            
+                f.write(f"    <desc>{escape(desc)}</desc>\n")
+
             # Categories
-            f.write('    <category>Sports</category>\n')
+            f.write("    <category>Sports</category>\n")
             if sport:
-                f.write(f'    <category>{escape(sport)}</category>\n')
-            f.write('    <category>Sports Event</category>\n')
-            f.write('    <category>Live</category>\n')
-            f.write('    <category>ESPNCC4C</category>\n')
-            
+                f.write(f"    <category>{escape(sport)}</category>\n")
+            f.write("    <category>Sports Event</category>\n")
+            f.write("    <category>Live</category>\n")
+            f.write("    <category>ESPNCC4C</category>\n")
+
             # URL - construct from channel ID
             url = f"http://192.168.86.80:8094/vc/{cid}"
-            f.write(f'    <url>{escape(url)}</url>\n')
-        
-        f.write('  </programme>\n')
-    
+            f.write(f"    <url>{escape(url)}</url>\n")
+
+        f.write("  </programme>\n")
+
     if duplicates_skipped > 0:
-        print(f"[xmltv] Skipped {duplicates_skipped} duplicate programme entries", file=sys.stderr)
+        print(
+            f"[xmltv] Skipped {duplicates_skipped} duplicate programme entries",
+            file=sys.stderr,
+        )
 
 
 def main():
@@ -252,7 +264,7 @@ def main():
             # Programmes (with deduplication)
             write_programmes(f, rows)
 
-            f.write('</tv>\n')
+            f.write("</tv>\n")
 
         print("[xmltv] wrote XML successfully")
         return 0

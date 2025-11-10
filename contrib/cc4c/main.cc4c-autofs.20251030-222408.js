@@ -537,14 +537,14 @@ armFullscreenFallback(argv.fullscreenDelay);
           document.body.style.overflow = 'hidden'
           document.body.style.width = '100vw'
           document.body.style.height = '100vh'
-          
+
           // Hide common UI elements
           const selectors = [
             'header', 'nav', 'footer', '.header-container', '.controls',
             '.navbar', '[class*="menu"]', '[class*="nav"]', '[class*="header"]',
             '[class*="footer"]', '[role="navigation"]'
           ]
-          
+
           selectors.forEach(sel => {
             try {
               document.querySelectorAll(sel).forEach(el => {
@@ -552,7 +552,7 @@ armFullscreenFallback(argv.fullscreenDelay);
               })
             } catch(e) {}
           })
-          
+
           // Maximize video
           const video = document.querySelector('video')
           if (video) {
@@ -560,11 +560,11 @@ armFullscreenFallback(argv.fullscreenDelay);
             video.style.height = '100vh !important'
           }
         })()`)
-        
+
         // Wait for stream to fully load
         console.log(`Waiting ${argv.fullscreenDelay}ms for stream to fully load...`)
         await delay(argv.fullscreenDelay)
-        
+
         // Use xdotool to send real OS-level keyboard event
         console.log('Sending F key via xdotool (OS-level input)')
         try {
@@ -586,13 +586,13 @@ globalThis.__cc4c_sentFullscreen = true;
         } catch (e) {
           console.log('xdotool not available, skipping fullscreen')
         }
-        
+
         console.log('ESPN stream setup complete')
       } catch (e) {
         console.log('Error setting up ESPN stream:', e)
       }
     }
-    
+
     // For NBC, look for video element and wait for it to be ready
     else if (u.includes('www.nbc.com')) {
       console.log('URL contains www.nbc.com')
@@ -623,7 +623,7 @@ globalThis.__cc4c_sentFullscreen = true;
             header.style.zIndex = '0'
           }
         })()`)
-        
+
         // Hide all UI elements to simulate fullscreen effect
         console.log('Hiding UI elements and maximizing video')
         await page.evaluate(`(function() {
@@ -633,14 +633,14 @@ globalThis.__cc4c_sentFullscreen = true;
           document.body.style.overflow = 'hidden'
           document.body.style.width = '100vw'
           document.body.style.height = '100vh'
-          
+
           // Hide common UI elements
           const selectors = [
             'header', 'nav', 'footer', '.header-container', '.controls',
             '.navbar', '[class*="menu"]', '[class*="nav"]', '[class*="header"]',
             '[class*="footer"]', '[role="navigation"]'
           ]
-          
+
           selectors.forEach(sel => {
             try {
               document.querySelectorAll(sel).forEach(el => {
@@ -648,7 +648,7 @@ globalThis.__cc4c_sentFullscreen = true;
               })
             } catch(e) {}
           })
-          
+
           // Maximize video
           const video = document.querySelector('video')
           if (video) {
@@ -656,11 +656,11 @@ globalThis.__cc4c_sentFullscreen = true;
             video.style.height = '100vh !important'
           }
         })()`)
-        
+
         // Wait for stream to fully load
         console.log(`Waiting ${argv.fullscreenDelay}ms for stream to fully load...`)
         await delay(argv.fullscreenDelay)
-        
+
         // Use xdotool to send real OS-level keyboard event
         console.log('Sending F key via xdotool (OS-level input)')
         try {
@@ -682,7 +682,7 @@ globalThis.__cc4c_sentFullscreen = true;
         } catch (e) {
           console.log('xdotool not available, skipping fullscreen')
         }
-        
+
         console.log('NBC stream setup complete')
       } catch (e) {
         console.log('failed to start stream', u, e)

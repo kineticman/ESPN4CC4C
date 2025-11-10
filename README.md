@@ -1,6 +1,6 @@
-# ESPN4CC4C — ESPN+ Virtual Channels for Channels DVR (Docker Edition)
+# ESPN4CC4C - ESPN+ Virtual Channels for Channels DVR (Docker Edition)
 
-Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all packaged in a single Docker service.
+Turn ESPN+ events into **stable virtual channels** (eplus1-eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** - all packaged in a single Docker service.
 
 ---
 
@@ -186,6 +186,148 @@ You should now see 40 ESPN+ virtual channels (`eplus1` through `eplus40`) in you
 
 ---
 
+## Content Filtering (Optional)
+
+ESPN4CC4C can filter which events appear in your channels based on networks, sports, leagues, and more. This is useful if you:
+- Only have ESPN+ (not cable/satellite)
+- Only have cable/satellite (not ESPN+)
+- Want specific sports only (e.g., football and basketball)
+- Want to exclude replays or specific networks
+
+### Quick Start
+
+**Step 1: Generate a starter filter config**
+```bash
+# Linux/Mac
+python3 bin/generate_filter_options.py ./data/eplus_vc.sqlite3 --generate-config > filters.ini
+
+# Windows (PowerShell)
+docker exec espn4cc python3 /app/bin/generate_filter_options.py /app/data/eplus_vc.sqlite3 --generate-config > filters.ini
+```
+
+**Step 2: Edit `filters.ini`** in the project root folder
+
+**Step 3: Rebuild the guide**
+```bash
+# Linux/Mac
+./update_schedule.sh
+
+# Windows
+.\windowsbootstrap.ps1 -LanIp YOUR_IP
+```
+
+### Common Filter Scenarios
+
+#### Scenario 1: ESPN+ Subscription Only
+For users with ESPN+ but no cable/satellite TV:
+```ini
+[filters]
+enabled_networks = ESPN+
+require_espn_plus = true
+```
+**Result:** ~300 events (college sports, niche content, UFC)
+
+#### Scenario 2: Cable/Satellite TV Only
+For users with a TV provider login but no ESPN+ subscription:
+```ini
+[filters]
+exclude_networks = ESPN+
+require_espn_plus = false
+```
+**Result:** ~460 events (ESPN, ESPN2, ESPNU, ESPNews, ACC Network, SEC Network, etc.)
+
+#### Scenario 3: Specific Sports Only
+Show only football and basketball:
+```ini
+[filters]
+enabled_sports = Football,Basketball
+```
+
+#### Scenario 4: Professional Sports Only
+Exclude all college sports:
+```ini
+[filters]
+enabled_leagues = NFL,NBA,NHL,MLS
+```
+
+#### Scenario 5: No Replays
+Only show live and upcoming events:
+```ini
+[filters]
+exclude_event_types = OVER
+```
+
+### Available Filter Options
+
+Run this command to see what's currently available in your database:
+```bash
+# Linux/Mac
+python3 bin/generate_filter_options.py ./data/eplus_vc.sqlite3
+
+# Windows
+docker exec espn4cc python3 /app/bin/generate_filter_options.py /app/data/eplus_vc.sqlite3
+```
+
+This shows:
+- Which networks have content (ESPN, ESPN2, ESPN+, etc.)
+- What sports are in season (Football, Basketball, Soccer, etc.)
+- Available leagues (NFL, NBA, NCAA, etc.)
+- Event counts for each
+
+### Filter Configuration Reference
+
+The `filters.ini` file supports these filter types:
+
+| Filter | Description | Example |
+|--------|-------------|---------|
+| `enabled_networks` | Whitelist specific networks | `ESPN,ESPN2,ESPNU` |
+| `exclude_networks` | Blacklist specific networks | `ESPN Deportes,ESPN PPV` |
+| `enabled_sports` | Only show certain sports | `Football,Basketball,Soccer` |
+| `exclude_sports` | Hide certain sports | `Dogs,Jai Alai` |
+| `enabled_leagues` | Only show certain leagues | `NFL,NBA,NHL` |
+| `exclude_leagues` | Hide certain leagues | `G League` |
+| `enabled_event_types` | Filter by broadcast type | `LIVE,UPCOMING` |
+| `exclude_event_types` | Exclude broadcast types | `OVER` (no replays) |
+| `require_espn_plus` | Control ESPN+ content | `true` or `false` |
+| `exclude_ppv` | Remove pay-per-view events | `true` |
+
+**Wildcards:** Use `*` to include everything (default)
+
+**Multiple values:** Separate with commas: `Football,Basketball,Soccer`
+
+### Verify Filtering
+
+After running `update_schedule.sh` or the Windows bootstrap, look for the filter summary:
+
+```
+== filter summary ==
+total_events_in_db=768  included_in_plan=429  filtered_out=339
+Active filters: /app/filters.ini
+  exclude_networks = ESPN+
+  require_espn_plus = false
+```
+
+This shows:
+- **total_events_in_db**: All events ESPN provides
+- **included_in_plan**: Events matching your filters
+- **filtered_out**: Events excluded by your filters
+
+### Troubleshooting Filters
+
+**Q: I set filters but nothing changed?**
+A: Make sure you ran `update_schedule.sh` (Linux) or `windowsbootstrap.ps1` (Windows) after editing `filters.ini`
+
+**Q: Too many/few events showing?**
+A: Run `generate_filter_options.py` to see what's actually available, then adjust filters
+
+**Q: Where's my favorite team/sport?**
+A: It may be out of season or not scheduled in the next 72 hours. Check the database with `generate_filter_options.py`
+
+**Q: Want to reset to defaults?**
+A: Delete `filters.ini` or set all `enabled_*` to `*` and all `exclude_*` to empty
+
+---
+
 ## Optional: Chrome Capture Integration
 
 For improved streaming reliability, you can install [Chrome Capture](https://github.com/fancybits/chrome-capture-for-channels) on the same host at port `5589`.
@@ -196,23 +338,34 @@ The M3U playlist is pre-configured to use Chrome Capture if available. If not in
 
 ## FAQ
 
-**How many channels do I get?**  
+**How many channels do I get?**
 40 channels by default (`eplus1` through `eplus40`). Configurable via `LANES` in `.env`.
 
-**How often does the guide update?**  
+**How often does the guide update?**
 Automatically rebuilds based on your configuration. Default window is 72 hours of programming.
+
+**Can I filter content by sport, network, or league?**
+Yes! Create a `filters.ini` file in the project root. See the **Content Filtering** section above for details.
+
+**Do I need ESPN+ or cable/satellite TV?**
+The system works with either or both:
+- **ESPN+ only**: Set `enabled_networks = ESPN+` in filters.ini (~300 events)
+- **Cable/satellite only**: Set `exclude_networks = ESPN+` in filters.ini (~460 events)
+- **Both**: No filtering needed (default, ~768 events)
 
 **Where are files stored?**
 - Database: `data/eplus_vc.sqlite3`
 - Guide (XMLTV): `out/epg.xml`
 - Channels (M3U): `out/playlist.m3u`
 - Logs: `logs/`
+- Filters (optional): `filters.ini`
 
 **Something not working?**
 1. Verify Docker is running
 2. Check `http://YOUR-IP:8094/health` returns `{"ok":true}`
 3. Review container logs: `docker logs espn4cc --tail 100`
 4. Ensure port 8094 isn't blocked by firewall
+5. If using filters, check the filter summary in update logs
 
 ---
 
@@ -284,11 +437,16 @@ docker compose up -d --force-recreate
 ```
 ESPN4CC4C/
 ├─ bin/                      # Python scripts that build the guide
+│  ├─ build_plan.py          # Main planning engine (supports filtering)
+│  ├─ filter_events.py       # Filtering logic
+│  ├─ generate_filter_options.py  # Shows available filter options
+│  └─ ...
 ├─ data/                     # SQLite database (persisted)
 ├─ logs/                     # Log files
 ├─ out/                      # epg.xml + playlist.m3u (what Channels DVR reads)
 ├─ docker-compose.yml        # Docker configuration
 ├─ .env                      # Your settings (IP addresses, etc)
+├─ filters.ini               # Optional: content filtering config
 ├─ windowsbootstrap.ps1      # Windows installer script
 ├─ bootstrap.sh              # Linux installer script
 └─ README.md                 # This file

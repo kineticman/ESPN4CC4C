@@ -208,16 +208,16 @@ PLAN_ID=$(sqlite3 "$DB" "SELECT MAX(id) FROM plan_run;" 2>/dev/null || echo 0)
 if [ "$PLAN_ID" -gt 0 ]; then
   # Count event slots (non-placeholder)
   EVENT_SLOTS=$(sqlite3 "$DB" "SELECT COUNT(*) FROM plan_slot WHERE plan_id=$PLAN_ID AND event_id IS NOT NULL AND event_id != '';" 2>/dev/null || echo 0)
-  
+
   # Count placeholder slots
   PLACEHOLDER_SLOTS=$(sqlite3 "$DB" "SELECT COUNT(*) FROM plan_slot WHERE plan_id=$PLAN_ID AND (event_id IS NULL OR event_id = '');" 2>/dev/null || echo 0)
-  
+
   # Count channels with events
   CHANNELS=$(sqlite3 "$DB" "SELECT COUNT(DISTINCT channel_id) FROM plan_slot WHERE plan_id=$PLAN_ID;" 2>/dev/null || echo 0)
-  
+
   # Get 5 sample upcoming events
   sqlite3 -json "$DB" "
-    SELECT 
+    SELECT
       e.title,
       datetime(ps.start_utc) as start_time,
       ps.channel_id,
@@ -231,7 +231,7 @@ if [ "$PLAN_ID" -gt 0 ]; then
     ORDER BY ps.start_utc
     LIMIT 5
   " 2>/dev/null || echo "[]"
-  
+
   echo "STATS:$EVENTS:$EVENT_SLOTS:$PLACEHOLDER_SLOTS:$CHANNELS"
 else
   echo "STATS:$EVENTS:0:0:0"
@@ -239,7 +239,7 @@ else
 fi
 '@
     $result = Invoke-InContainerBash -Script $statsQuery
-    
+
     # Parse the result
     $lines = $result -split "`n"
     foreach ($line in $lines) {
@@ -257,7 +257,7 @@ fi
             }
         }
     }
-    
+
     Ok "Database stats retrieved"
 } catch {
     Warn "Could not retrieve database stats: $_"

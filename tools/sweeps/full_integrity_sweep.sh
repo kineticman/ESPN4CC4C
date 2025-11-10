@@ -53,7 +53,7 @@ PY
 
 echo; echo "[4/7] resolver vs DB: event_id @ now per lane (expect all MATCH)"
 if ! command -v jq >/dev/null 2>&1; then
-  echo "jq not found – skipping this step"; 
+  echo "jq not found – skipping this step";
 else
   while read -r lane; do
     db_evt=$(sqlite3 "$DB" "

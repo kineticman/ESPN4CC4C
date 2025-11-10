@@ -14,36 +14,50 @@ Env toggles:
   WATCH_API_TZ=America/New_York
   WATCH_API_REGION=US
 """
-import argparse, os, sqlite3, time, json, hashlib
-from datetime import datetime, timedelta, timezone, date
+import argparse
+import hashlib
+import json
+import os
+import sqlite3
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
-from typing import Dict, Any, List, Optional
-import requests, urllib3
-from config import (
-    WATCH_API_BASE as CFG_WATCH_API_BASE,
-    WATCH_API_KEY as CFG_WATCH_API_KEY,
-    WATCH_FEATURES as CFG_WATCH_FEATURES,
-    WATCH_DEFAULT_REGION as CFG_WATCH_DEFAULT_REGION,
-    WATCH_DEFAULT_TZ as CFG_WATCH_DEFAULT_TZ,
-    WATCH_DEFAULT_DEVICE as CFG_WATCH_DEFAULT_DEVICE,
-    WATCH_VERIFY_SSL as CFG_WATCH_VERIFY_SSL,
-)
 
+import requests
+import urllib3
 
-API_BASE   = CFG_WATCH_API_BASE
-API_KEY    = CFG_WATCH_API_KEY
-FEATURES   = CFG_WATCH_FEATURES
-REGION     = os.getenv('WATCH_API_REGION', CFG_WATCH_DEFAULT_REGION).upper()
-TZ_DEFAULT = os.getenv('WATCH_API_TZ', CFG_WATCH_DEFAULT_TZ)
-DEVICE_S   = os.getenv('WATCH_API_DEVICE', CFG_WATCH_DEFAULT_DEVICE).lower()
-VERIFY_SSL = str(os.getenv('WATCH_API_VERIFY_SSL', str(CFG_WATCH_VERIFY_SSL)))\
-    .strip().lower() not in ('0','false','no','off')
+from config import WATCH_API_BASE as CFG_WATCH_API_BASE
+from config import WATCH_API_KEY as CFG_WATCH_API_KEY
+from config import WATCH_DEFAULT_DEVICE as CFG_WATCH_DEFAULT_DEVICE
+from config import WATCH_DEFAULT_REGION as CFG_WATCH_DEFAULT_REGION
+from config import WATCH_DEFAULT_TZ as CFG_WATCH_DEFAULT_TZ
+from config import WATCH_FEATURES as CFG_WATCH_FEATURES
+from config import WATCH_VERIFY_SSL as CFG_WATCH_VERIFY_SSL
+
+API_BASE = CFG_WATCH_API_BASE
+API_KEY = CFG_WATCH_API_KEY
+FEATURES = CFG_WATCH_FEATURES
+REGION = os.getenv("WATCH_API_REGION", CFG_WATCH_DEFAULT_REGION).upper()
+TZ_DEFAULT = os.getenv("WATCH_API_TZ", CFG_WATCH_DEFAULT_TZ)
+DEVICE_S = os.getenv("WATCH_API_DEVICE", CFG_WATCH_DEFAULT_DEVICE).lower()
+VERIFY_SSL = str(
+    os.getenv("WATCH_API_VERIFY_SSL", str(CFG_WATCH_VERIFY_SSL))
+).strip().lower() not in ("0", "false", "no", "off")
 
 if not VERIFY_SSL:
-    try: urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    except Exception: pass
+    try:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    except Exception:
+        pass
 
-DEVICE_MAP = {"desktop":"DESKTOP","web":"DESKTOP","mobile":"MOBILE","tv":"CONNECTED_TV","ctv":"CONNECTED_TV"}
+DEVICE_MAP = {
+    "desktop": "DESKTOP",
+    "web": "DESKTOP",
+    "mobile": "MOBILE",
+    "tv": "CONNECTED_TV",
+    "ctv": "CONNECTED_TV",
+}
 DEVICE = DEVICE_MAP.get(DEVICE_S, "DESKTOP")
 
 HEADERS = {
@@ -74,12 +88,15 @@ query Airings(
 }
 """.strip()
 
+
 def stable_event_id(source: str, external_id: str) -> str:
     return f"{source}:{external_id}:{hashlib.sha256(f'{source}:{external_id}'.encode()).hexdigest()[:32]}"
+
 
 def espn_player_url(row: Dict[str, Any]) -> Optional[str]:
     pid = row.get("id") or row.get("airingId") or row.get("simulcastAiringId")
     return f"https://www.espn.com/watch/player/_/id/{pid}" if pid else None
+
 
 def connect(dbpath: str) -> sqlite3.Connection:
     conn = sqlite3.connect(dbpath)
@@ -88,8 +105,10 @@ def connect(dbpath: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
+
 def ensure_schema(conn: sqlite3.Connection):
-    conn.executescript("""
+    conn.executescript(
+        """
     CREATE TABLE IF NOT EXISTS events(
       id TEXT PRIMARY KEY,
       start_utc TEXT NOT NULL,
@@ -118,16 +137,18 @@ def ensure_schema(conn: sqlite3.Connection):
       url TEXT,
       is_primary INTEGER NOT NULL DEFAULT 1
     );
-    """)
+    """
+    )
+
 
 def migrate_schema(conn: sqlite3.Connection):
     """Add new columns to existing databases"""
     cursor = conn.cursor()
-    
+
     # Get existing columns from events table
     cursor.execute("PRAGMA table_info(events)")
     existing_cols = {row[1] for row in cursor.fetchall()}
-    
+
     # Define new columns that should exist
     new_cols = {
         "network": "TEXT",
@@ -143,7 +164,7 @@ def migrate_schema(conn: sqlite3.Connection):
         "airing_id": "TEXT",
         "simulcast_airing_id": "TEXT",
     }
-    
+
     # Add missing columns
     added = 0
     for col, col_type in new_cols.items():
@@ -151,43 +172,82 @@ def migrate_schema(conn: sqlite3.Connection):
             print(f"[migration] Adding column: {col} {col_type}")
             conn.execute(f"ALTER TABLE events ADD COLUMN {col} {col_type}")
             added += 1
-    
+
     if added > 0:
         print(f"[migration] Added {added} new column(s) to events table")
         conn.commit()
 
+
 def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
-    cols = ("id","start_utc","stop_utc","title","sport","subtitle","summary","image",
-            "network","network_id","network_short","league_name","league_id","league_abbr",
-            "sport_id","sport_abbr","packages","event_type","airing_id","simulcast_airing_id")
+    cols = (
+        "id",
+        "start_utc",
+        "stop_utc",
+        "title",
+        "sport",
+        "subtitle",
+        "summary",
+        "image",
+        "network",
+        "network_id",
+        "network_short",
+        "league_name",
+        "league_id",
+        "league_abbr",
+        "sport_id",
+        "sport_abbr",
+        "packages",
+        "event_type",
+        "airing_id",
+        "simulcast_airing_id",
+    )
     vals = [row.get(k) for k in cols]
     placeholders = ",".join(["?"] * len(cols))
-    updates = ",".join([f"{c}=COALESCE(excluded.{c},events.{c})" for c in cols[1:]])  # skip id
-    conn.execute(f"""
+    updates = ",".join(
+        [f"{c}=COALESCE(excluded.{c},events.{c})" for c in cols[1:]]
+    )  # skip id
+    conn.execute(
+        f"""
     INSERT INTO events({",".join(cols)}) VALUES({placeholders})
     ON CONFLICT(id) DO UPDATE SET {updates}
-    """, vals)
+    """,
+        vals,
+    )
+
 
 def replace_feeds(conn: sqlite3.Connection, event_id: str, urls: List[str]):
     conn.execute("DELETE FROM feeds WHERE event_id=?", (event_id,))
     for i, u in enumerate(urls):
-        if not u: continue
-        conn.execute("INSERT INTO feeds(event_id,url,is_primary) VALUES(?,?,?)",
-                     (event_id, u, 1 if i == 0 else 0))
+        if not u:
+            continue
+        conn.execute(
+            "INSERT INTO feeds(event_id,url,is_primary) VALUES(?,?,?)",
+            (event_id, u, 1 if i == 0 else 0),
+        )
+
 
 def post_airings(day_iso: str, tz_str: str, limit: int = 2000) -> List[Dict[str, Any]]:
-    s = requests.Session(); s.verify = VERIFY_SSL
+    s = requests.Session()
+    s.verify = VERIFY_SSL
     params = {"apiKey": API_KEY, "features": FEATURES}
     payload = {
         "query": GQL_QUERY,
-        "variables": {"countryCode":REGION, "deviceType":DEVICE, "tz":tz_str, "day":day_iso, "limit":limit},
+        "variables": {
+            "countryCode": REGION,
+            "deviceType": DEVICE,
+            "tz": tz_str,
+            "day": day_iso,
+            "limit": limit,
+        },
         "operationName": "Airings",
     }
     for attempt in range(1, 5):
         try:
-            r = s.post(API_BASE, params=params, headers=HEADERS, json=payload, timeout=20)
+            r = s.post(
+                API_BASE, params=params, headers=HEADERS, json=payload, timeout=20
+            )
             if r.status_code >= 400:
-                snippet = (r.text or "")[:800].replace("\n"," ")
+                snippet = (r.text or "")[:800].replace("\n", " ")
                 print(f"[watch-graph] HTTP {r.status_code} body={snippet}")
                 r.raise_for_status()
             data = r.json()
@@ -196,9 +256,11 @@ def post_airings(day_iso: str, tz_str: str, limit: int = 2000) -> List[Dict[str,
                 raise RuntimeError("unexpected JSON: airings not list")
             return air
         except Exception:
-            if attempt >= 4: raise
+            if attempt >= 4:
+                raise
             time.sleep(0.5 * (2 ** (attempt - 1)))
     return []
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -223,44 +285,59 @@ def main():
                 title = a.get("shortName") or a.get("name")
                 start = a.get("startDateTime")
                 stop = a.get("endDateTime")
-                base_id = str(a.get("id") or a.get("airingId") or a.get("simulcastAiringId") or title or "evt")
-                if not start or not stop: continue
-                
+                base_id = str(
+                    a.get("id")
+                    or a.get("airingId")
+                    or a.get("simulcastAiringId")
+                    or title
+                    or "evt"
+                )
+                if not start or not stop:
+                    continue
+
                 # Extract nested objects
                 sport_obj = a.get("sport") or {}
                 league_obj = a.get("league") or {}
                 network_obj = a.get("network") or {}
                 packages_list = a.get("packages") or []
-                
+
                 # Convert packages to JSON string
-                packages_str = json.dumps([p.get("name") for p in packages_list if p.get("name")]) if packages_list else None
-                
+                packages_str = (
+                    json.dumps([p.get("name") for p in packages_list if p.get("name")])
+                    if packages_list
+                    else None
+                )
+
                 eid = stable_event_id("espn-watch", base_id)
-                upsert_event(conn, {
-                    "id": eid,
-                    "start_utc": start,
-                    "stop_utc": stop,
-                    "title": title,
-                    "sport": sport_obj.get("name"),
-                    "subtitle": None,
-                    "summary": league_obj.get("name"),
-                    "image": None,
-                    "network": network_obj.get("name"),
-                    "network_id": network_obj.get("id"),
-                    "network_short": network_obj.get("shortName"),
-                    "league_name": league_obj.get("name"),
-                    "league_id": league_obj.get("id"),
-                    "league_abbr": league_obj.get("abbreviation"),
-                    "sport_id": sport_obj.get("id"),
-                    "sport_abbr": sport_obj.get("abbreviation"),
-                    "packages": packages_str,
-                    "event_type": a.get("type"),
-                    "airing_id": a.get("airingId"),
-                    "simulcast_airing_id": a.get("simulcastAiringId"),
-                })
+                upsert_event(
+                    conn,
+                    {
+                        "id": eid,
+                        "start_utc": start,
+                        "stop_utc": stop,
+                        "title": title,
+                        "sport": sport_obj.get("name"),
+                        "subtitle": None,
+                        "summary": league_obj.get("name"),
+                        "image": None,
+                        "network": network_obj.get("name"),
+                        "network_id": network_obj.get("id"),
+                        "network_short": network_obj.get("shortName"),
+                        "league_name": league_obj.get("name"),
+                        "league_id": league_obj.get("id"),
+                        "league_abbr": league_obj.get("abbreviation"),
+                        "sport_id": sport_obj.get("id"),
+                        "sport_abbr": sport_obj.get("abbreviation"),
+                        "packages": packages_str,
+                        "event_type": a.get("type"),
+                        "airing_id": a.get("airingId"),
+                        "simulcast_airing_id": a.get("simulcastAiringId"),
+                    },
+                )
                 replace_feeds(conn, eid, [espn_player_url(a)])
                 total += 1
     print(f"Ingested {total} airings into {args.db}")
+
 
 if __name__ == "__main__":
     main()
