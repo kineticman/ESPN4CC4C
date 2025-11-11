@@ -71,3 +71,34 @@ if docker compose ps espn4cc >/dev/null 2>&1; then
 else
   echo "(docker compose service espn4cc not detected)"
 fi
+
+# --- host consistency check (BASE vs M3U/EPG) ---
+echo "== host consistency check =="
+m3u_host="$(curl -s "${BASE}/playlist.m3u" | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
+epg_host="$(curl -s "${BASE}/epg.xml"      | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
+base_host="$(echo "${BASE}" | grep -Eo 'http://[0-9.]+:8094')"
+if [[ -z "${base_host}" ]]; then
+  # if BASE is not an http://IP:PORT (e.g., hostname), skip strict compare and just report
+  echo "(note) BASE not in http://IP:PORT form; reported BASE=${BASE}"
+else
+  if [[ "$m3u_host" != "$base_host" || "$epg_host" != "$base_host" ]]; then
+    echo "✖ host mismatch: BASE=${base_host} M3U=${m3u_host:-<none>} EPG=${epg_host:-<none>}"
+    exit 3
+  else
+    echo "✔ hosts consistent (${base_host})"
+  fi
+fi
+
+# --- lane count check (optional; requires LANES in env) ---
+if [[ -n "${LANES:-}" ]]; then
+  echo "== lane count check =="
+  m3u_count="$(curl -s "${BASE}/playlist.m3u" | grep -c '^#EXTINF' || true)"
+  if [[ -z "${m3u_count}" ]]; then
+    echo "(warn) could not count lanes from M3U"
+  elif [[ "${m3u_count}" -ne "${LANES}" ]]; then
+    echo "✖ lane count mismatch: M3U=${m3u_count} expected=${LANES}"
+    exit 4
+  else
+    echo "✔ lane count OK (${LANES})"
+  fi
+fi
