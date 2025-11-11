@@ -48,8 +48,9 @@ curl -s "${BASE}/health" && echo
 
 # --- M3U first lines + sanity (no localhost) ---
 echo "== m3u (first 12) =="
-curl -s "${BASE}/playlist.m3u" | sed -n '1,12p' || true
-if curl -s "${BASE}/playlist.m3u" | grep -Ei 'localhost|127\.0\.0\.1' >/dev/null; then
+m3u_raw="$(curl -s "${BASE}/playlist.m3u" || true)"
+printf "%s\n" "$m3u_raw" | sed -n '1,12p' || true
+if printf "%s\n" "$m3u_raw" | grep -Ei 'localhost|127\.0\.0\.1' >/dev/null; then
   echo "✖ localhost found in M3U"
   exit 2
 else
@@ -58,7 +59,8 @@ fi
 
 # --- XMLTV head ---
 echo "== xmltv head =="
-curl -s "${BASE}/epg.xml" | sed -n '1,6p' || true
+epg_raw="$(curl -s "${BASE}/epg.xml" || true)"
+printf "%s\n" "$epg_raw" | sed -n '1,6p' || true
 
 # --- channel probe (only_live) ---
 echo "== channel probe (eplus9 only_live) =="
@@ -74,8 +76,13 @@ fi
 
 # --- host consistency check (BASE vs M3U/EPG) ---
 echo "== host consistency check =="
-m3u_host="$(curl -s "${BASE}/playlist.m3u" | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
-epg_host="$(curl -s "${BASE}/epg.xml"      | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
+# try plain http first
+m3u_host="$(printf "%s\n" "$m3u_raw" | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
+# if not found, try decoding percent-encoding minimally for : and /
+if [[ -z "$m3u_host" ]]; then
+  m3u_host="$(printf "%s\n" "$m3u_raw" | sed -e 's/%3A/:/gI' -e 's/%2F/\//gI' | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
+fi
+epg_host="$(printf "%s\n" "$epg_raw" | grep -m1 -Eo 'http://[0-9.]+:8094' || true)"
 base_host="$(echo "${BASE}" | grep -Eo 'http://[0-9.]+:8094')"
 if [[ -z "${base_host}" ]]; then
   # if BASE is not an http://IP:PORT (e.g., hostname), skip strict compare and just report
@@ -92,7 +99,7 @@ fi
 # --- lane count check (optional; requires LANES in env) ---
 if [[ -n "${LANES:-}" ]]; then
   echo "== lane count check =="
-  m3u_count="$(curl -s "${BASE}/playlist.m3u" | grep -c '^#EXTINF' || true)"
+  m3u_count="$(printf "%s\n" "$m3u_raw" | grep -c '^#EXTINF' || true)"
   if [[ -z "${m3u_count}" ]]; then
     echo "(warn) could not count lanes from M3U"
   elif [[ "${m3u_count}" -ne "${LANES}" ]]; then
