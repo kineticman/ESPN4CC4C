@@ -116,5 +116,5 @@ up:    ; docker compose up -d
 down:  ; docker compose down
 build: ; docker compose build
 logs:  ; docker compose logs -f --tail=120
-verify:; ./espn4cc_verify.sh $(HOST) $(PORT)
+verify:; contrib/diagnostics/espn4cc_verify.sh $(HOST) $(PORT)
 cycle: ; docker compose exec espn4cc /app/bin/refresh_in_container.sh

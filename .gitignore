@@ -43,3 +43,5 @@ __pycache__/
 /1.py
 /5.sh
 /windowsbootstrap.ps1.bak_*
+out/*
+!out/.gitkeep
