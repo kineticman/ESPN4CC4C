@@ -31,3 +31,9 @@ echo "[OK ] m3u head:"; curl -fsS "${VC_URL}/playlist.m3u" | sed -n '1,6p'
 
 # print next-12h total/real/placeholder
 CExec "sqlite3 /app/data/eplus_vc.sqlite3 \"WITH latest AS (SELECT MAX(plan_id) pid FROM plan_slot), norm AS ( SELECT CASE WHEN typeof(start_utc)='text' THEN strftime('%s',start_utc) WHEN start_utc IS NOT NULL THEN start_utc ELSE starts_at END AS s_epoch, is_placeholder FROM plan_slot, latest WHERE plan_slot.plan_id = latest.pid ) SELECT (SELECT COUNT(*) FROM norm WHERE s_epoch>=strftime('%s','now') AND s_epoch<strftime('%s','now','+12 hours')) AS total_12h, (SELECT COUNT(*) FROM norm WHERE is_placeholder=0 AND s_epoch>=strftime('%s','now') AND s_epoch<strftime('%s','now','+12 hours')) AS real_12h, (SELECT COUNT(*) FROM norm WHERE is_placeholder=1 AND s_epoch>=strftime('%s','now') AND s_epoch<strftime('%s','now','+12 hours')) AS placeholders_12h;\""
+
+# filter summary (if filters.ini exists)
+if [ -f "filters.ini" ]; then
+  echo "[OK ] filter summary:"
+  CExec 'total=$(sqlite3 /app/data/eplus_vc.sqlite3 "SELECT COUNT(*) FROM events;"); latest=$(sqlite3 /app/data/eplus_vc.sqlite3 "SELECT MAX(plan_id) FROM plan_slot;"); if [ "$latest" -gt 0 ]; then incl=$(sqlite3 /app/data/eplus_vc.sqlite3 "SELECT COUNT(DISTINCT event_id) FROM plan_slot WHERE plan_id=$latest AND kind=\"event\" AND event_id IS NOT NULL;"); filt=$((total - incl)); echo "total_events=$total  included=$incl  filtered_out=$filt"; [ -f /app/filters.ini ] && echo "Active: /app/filters.ini" && grep -E "^(enabled_|exclude_|require_)" /app/filters.ini | grep -v "^#" | grep -v "= \*$" | grep -v "= $" | head -5; fi'
+fi

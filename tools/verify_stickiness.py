@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-import argparse, sqlite3, sys
+import argparse
+import sqlite3
+import sys
 from textwrap import shorten
+
 
 def get_prev_curr(conn, prev, curr):
     if prev is not None and curr is not None:
@@ -11,18 +14,27 @@ def get_prev_curr(conn, prev, curr):
         sys.exit(1)
     return (prev or c[1][0], curr or c[0][0])
 
+
 def load_slots(conn, pid):
-    return conn.execute("""
+    return conn.execute(
+        """
         SELECT channel_id, event_id FROM plan_slot
         WHERE plan_id=? AND kind='event'
-    """, (pid,)).fetchall()
+    """,
+        (pid,),
+    ).fetchall()
+
 
 def main():
-    ap = argparse.ArgumentParser(description="Compare lane stickiness between two plans.")
+    ap = argparse.ArgumentParser(
+        description="Compare lane stickiness between two plans."
+    )
     ap.add_argument("--db", required=True)
     ap.add_argument("--prev", type=int, help="previous plan_id (optional)")
     ap.add_argument("--curr", type=int, help="current  plan_id (optional)")
-    ap.add_argument("--limit", type=int, default=120, help="how many moved rows to print")
+    ap.add_argument(
+        "--limit", type=int, default=120, help="how many moved rows to print"
+    )
     args = ap.parse_args()
 
     conn = sqlite3.connect(args.db)
@@ -49,7 +61,7 @@ def main():
         else:
             moved.append((evt, pl, ch))
 
-    print(f"=== Stickiness check ===")
+    print("=== Stickiness check ===")
     print(f"DB: {args.db}")
     print(f"Comparing plans: newest={curr_id} vs prev={prev_id}")
     print(f"Common events: {common}")
@@ -58,8 +70,9 @@ def main():
     if moved:
         print(f"{'event_id':<66}  {'prev_lane':<10}  {'new_lane':<10}")
         print(f"{'-'*66}  {'-'*10}  {'-'*10}")
-        for evt, pl, nl in moved[:args.limit]:
+        for evt, pl, nl in moved[: args.limit]:
             print(f"{shorten(evt, width=66, placeholder='…'):<66}  {pl:<10}  {nl:<10}")
+
 
 if __name__ == "__main__":
     main()

@@ -11,27 +11,34 @@ import hashlib
 import json
 import os
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+# Filter support
+try:
+    from filter_events import EventFilter, filter_events_from_db
+
+    FILTERS_AVAILABLE = True
+except ImportError:
+    FILTERS_AVAILABLE = False
+
 # ---------- Config fallbacks ----------
 try:
-    from version import get_version, VERSION as BUILD_VERSION  # type: ignore
+    from version import VERSION as BUILD_VERSION  # type: ignore
+    from version import get_version
+
     RUNTIME_VERSION = get_version()
 except Exception:
     BUILD_VERSION = "unknown"
     RUNTIME_VERSION = "unknown"
 
 try:
-    from config import (  # type: ignore
-        BUILDER_DEFAULT_TZ as CFG_TZ,
-        BUILDER_DEFAULT_VALID_HOURS as CFG_VALID_HOURS,
-        BUILDER_DEFAULT_MIN_GAP_MINS as CFG_MIN_GAP_MINS,
-        BUILDER_DEFAULT_LANES as CFG_LANES,
-        CHANNEL_START_CHNO as CFG_CHANNEL_START_CHNO,
-    )
+    from config import BUILDER_DEFAULT_LANES as CFG_LANES
+    from config import BUILDER_DEFAULT_MIN_GAP_MINS as CFG_MIN_GAP_MINS
+    from config import BUILDER_DEFAULT_TZ as CFG_TZ  # type: ignore
+    from config import BUILDER_DEFAULT_VALID_HOURS as CFG_VALID_HOURS
+    from config import CHANNEL_START_CHNO as CFG_CHANNEL_START_CHNO
 except Exception:
     CFG_TZ = "America/New_York"
     CFG_VALID_HOURS = 72
@@ -47,6 +54,7 @@ LOG_PATH = os.path.join(LOG_DIR, "plan_builder.jsonl")
 
 STICKY_GRACE = timedelta(seconds=0)  # lane must be free at event start
 
+
 # ---------- Logging ----------
 def jlog(**kv):
     kv = {"ts": datetime.now(timezone.utc).isoformat(), "mod": "build_plan", **kv}
@@ -58,6 +66,7 @@ def jlog(**kv):
     except Exception:
         pass
 
+
 # ---------- DB helpers ----------
 def connect_db(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
@@ -66,27 +75,50 @@ def connect_db(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
+
 # ---------- CLI ----------
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="ESPN4CC4C Plan Builder")
     ap.add_argument("--db", required=True)
     ap.add_argument("--valid-hours", type=int, default=CFG_VALID_HOURS)
-    ap.add_argument("--start", default=None, help="ISO (2025-11-09T18:00:00), local 'YYYY-MM-DD HH:MM:SS', or offset like -6h / -30m")
+    ap.add_argument(
+        "--start",
+        default=None,
+        help="ISO (2025-11-09T18:00:00), local 'YYYY-MM-DD HH:MM:SS', or offset like -6h / -30m",
+    )
     ap.add_argument("--tz", default=CFG_TZ)
     ap.add_argument("--note", default="")
-    ap.add_argument("--min-gap-mins", type=int, default=CFG_MIN_GAP_MINS, help="min placeholder gap granularity")
-    ap.add_argument("--align", type=int, default=30, help=":00/:30 grid in minutes (e.g., 30)")
-    ap.add_argument("--lanes", type=int, default=CFG_LANES, help="seed this many lanes if channel table empty")
+    ap.add_argument(
+        "--min-gap-mins",
+        type=int,
+        default=CFG_MIN_GAP_MINS,
+        help="min placeholder gap granularity",
+    )
+    ap.add_argument(
+        "--align", type=int, default=30, help=":00/:30 grid in minutes (e.g., 30)"
+    )
+    ap.add_argument(
+        "--lanes",
+        type=int,
+        default=CFG_LANES,
+        help="seed this many lanes if channel table empty",
+    )
     return ap.parse_args()
 
+
 # ---------- Channel seeding ----------
-def make_default_lanes(n: int = 40, start_chno: Optional[int] = None) -> List[Tuple[str, int, str, str]]:
+def make_default_lanes(
+    n: int = 40, start_chno: Optional[int] = None
+) -> List[Tuple[str, int, str, str]]:
     if start_chno is None:
         start_chno = CFG_CHANNEL_START_CHNO
     lanes: List[Tuple[str, int, str, str]] = []
     for i in range(1, n + 1):
-        lanes.append((f"eplus{i:02d}", start_chno + (i - 1), f"ESPN+ EPlus {i}", "ESPN+ VC"))
+        lanes.append(
+            (f"eplus{i:02d}", start_chno + (i - 1), f"ESPN+ EPlus {i}", "ESPN+ VC")
+        )
     return lanes
+
 
 def seed_channels_if_empty(conn: sqlite3.Connection, nlanes: int = 40) -> int:
     cur = conn.execute("SELECT COUNT(*) AS n FROM channel WHERE COALESCE(active,1)=1")
@@ -102,6 +134,7 @@ def seed_channels_if_empty(conn: sqlite3.Connection, nlanes: int = 40) -> int:
     jlog(event="seed_channels", count=len(lanes))
     return len(lanes)
 
+
 # ---------- Query helpers ----------
 def load_channels(conn: sqlite3.Connection) -> List[dict]:
     rows = conn.execute(
@@ -109,17 +142,41 @@ def load_channels(conn: sqlite3.Connection) -> List[dict]:
     ).fetchall()
     return [dict(r) for r in rows]
 
-def load_events(conn: sqlite3.Connection, start_utc: str, end_utc: str) -> List[dict]:
-    q = (
-        "SELECT e.* FROM events e "
-        "WHERE e.start_utc < ? AND e.stop_utc > ? "
-        "ORDER BY e.start_utc ASC"
-    )
-    try:
-        rows = conn.execute(q, (end_utc, start_utc)).fetchall()
-    except Exception:
-        return []
+
+def load_events(
+    conn: sqlite3.Connection,
+    start_utc: str,
+    end_utc: str,
+    event_ids: Optional[List[str]] = None,
+) -> List[dict]:
+    """Load events within time window, optionally filtered by event IDs"""
+    if event_ids is not None:
+        # Filter by specific event IDs
+        if not event_ids:
+            return []  # No events passed filter
+        placeholders = ",".join("?" * len(event_ids))
+        q = (
+            f"SELECT e.* FROM events e "
+            f"WHERE e.id IN ({placeholders}) AND e.start_utc < ? AND e.stop_utc > ? "
+            f"ORDER BY e.start_utc ASC"
+        )
+        try:
+            rows = conn.execute(q, tuple(event_ids) + (end_utc, start_utc)).fetchall()
+        except Exception:
+            return []
+    else:
+        # No filtering - load all events in window
+        q = (
+            "SELECT e.* FROM events e "
+            "WHERE e.start_utc < ? AND e.stop_utc > ? "
+            "ORDER BY e.start_utc ASC"
+        )
+        try:
+            rows = conn.execute(q, (end_utc, start_utc)).fetchall()
+        except Exception:
+            return []
     return [dict(r) for r in rows]
+
 
 # ---------- Sticky lanes ----------
 def _load_event_lane_map(conn: sqlite3.Connection) -> Dict[str, str]:
@@ -128,6 +185,7 @@ def _load_event_lane_map(conn: sqlite3.Connection) -> Dict[str, str]:
         return {str(r[0]): str(r[1]) for r in rows}
     except Exception:
         return {}
+
 
 def _seed_event_lane_from_latest_plan(conn: sqlite3.Connection) -> int:
     try:
@@ -146,7 +204,7 @@ def _seed_event_lane_from_latest_plan(conn: sqlite3.Connection) -> int:
                 if eid is None:
                     continue
                 conn.execute(
-                    "INSERT INTO event_lane(event_id,channel_id) VALUES(?,?) ON CONFLICT(event_id) DO UPDATE SET channel_id=excluded.channel_id",
+                    "INSERT INTO event_lane(event_id,channel_id) VALUES(?,?) ON CONFLICT(event_id) DO UPDATE SET channel_id=excluded.channel_id",  # noqa: E501
                     (eid, cid),
                 )
                 count += 1
@@ -154,21 +212,27 @@ def _seed_event_lane_from_latest_plan(conn: sqlite3.Connection) -> int:
     except Exception:
         return 0
 
-def _upsert_event_lane(conn: sqlite3.Connection, event_id: str, channel_id: str) -> None:
+
+def _upsert_event_lane(
+    conn: sqlite3.Connection, event_id: str, channel_id: str
+) -> None:
     with conn:
         conn.execute(
-            "INSERT INTO event_lane(event_id,channel_id) VALUES(?,?) ON CONFLICT(event_id) DO UPDATE SET channel_id=excluded.channel_id",
+            "INSERT INTO event_lane(event_id,channel_id) VALUES(?,?) ON CONFLICT(event_id) DO UPDATE SET channel_id=excluded.channel_id",  # noqa: E501
             (event_id, channel_id),
         )
+
 
 # ---------- Time/grid helpers ----------
 def iso(dt: datetime) -> str:
     return dt.replace(microsecond=0, tzinfo=timezone.utc).isoformat()
 
+
 def _floor_to_step(dt: datetime, step_mins: int) -> datetime:
     step = step_mins * 60
     s = int(dt.timestamp())
     return datetime.fromtimestamp((s // step) * step, tz=timezone.utc)
+
 
 def _ceil_to_step(dt: datetime, step_mins: int) -> datetime:
     step = step_mins * 60
@@ -177,7 +241,10 @@ def _ceil_to_step(dt: datetime, step_mins: int) -> datetime:
         return datetime.fromtimestamp(s, tz=timezone.utc)
     return datetime.fromtimestamp(((s // step) + 1) * step, tz=timezone.utc)
 
-def _segmentize(start_dt: datetime, end_dt: datetime, step_mins: int) -> Iterable[Tuple[datetime, datetime]]:
+
+def _segmentize(
+    start_dt: datetime, end_dt: datetime, step_mins: int
+) -> Iterable[Tuple[datetime, datetime]]:
     if start_dt >= end_dt:
         return []
     s = _floor_to_step(start_dt, step_mins)
@@ -188,6 +255,7 @@ def _segmentize(start_dt: datetime, end_dt: datetime, step_mins: int) -> Iterabl
         nxt = t + timedelta(minutes=step_mins)
         yield (t, min(nxt, end_dt))
         t = nxt
+
 
 # ---------- Core planning ----------
 def build_plan(
@@ -220,7 +288,9 @@ def build_plan(
         norm_events.append(e2)
 
     # Channel timelines
-    channels_sorted = [str(c["id"]) if isinstance(c["id"], (int,)) else str(c["id"]) for c in channels]
+    channels_sorted = [
+        str(c["id"]) if isinstance(c["id"], (int,)) else str(c["id"]) for c in channels
+    ]
     timelines: Dict[str, List[dict]] = {cid: [] for cid in channels_sorted}
 
     sticky = _sticky_map or {}
@@ -237,7 +307,11 @@ def build_plan(
             return True
 
         target_cid: Optional[str] = None
-        if preferred and preferred in timelines and lane_free(preferred, ev["_s"], ev["_t"]):
+        if (
+            preferred
+            and preferred in timelines
+            and lane_free(preferred, ev["_s"], ev["_t"])
+        ):
             target_cid = preferred
         else:
             for cid in channels_sorted:
@@ -247,11 +321,22 @@ def build_plan(
 
         if not target_cid:
             # No free lane; drop this event (logged)
-            jlog(level="warning", event="no_free_lane", event_id=eid, start=iso(ev["_s"]), end=iso(ev["_t"]))
+            jlog(
+                level="warning",
+                event="no_free_lane",
+                event_id=eid,
+                start=iso(ev["_s"]),
+                end=iso(ev["_t"]),
+            )
             continue
 
         if preferred and preferred != target_cid:
-            jlog(event="sticky_miss_reassigned", event_id=eid, sticky=preferred, assigned=target_cid)
+            jlog(
+                event="sticky_miss_reassigned",
+                event_id=eid,
+                sticky=preferred,
+                assigned=target_cid,
+            )
 
         timelines[target_cid].append(
             {
@@ -312,7 +397,9 @@ def build_plan(
     cleaned: List[dict] = []
     new_sticky: List[Tuple[str, str]] = []
     for cid in channels_sorted:
-        slots = sorted(timelines[cid], key=lambda r: (r["start"], 0 if r["kind"] == "event" else 1))
+        slots = sorted(
+            timelines[cid], key=lambda r: (r["start"], 0 if r["kind"] == "event" else 1)
+        )
         i = 0
         while i < len(slots):
             current = slots[i]
@@ -334,9 +421,16 @@ def build_plan(
                             nxt["start"] = current["end"]
                     elif current["kind"] == "event" and nxt["kind"] == "event":
                         # event-to-event overlap -> keep earlier, drop later
-                        jlog(level="warning", event="event_overlap_detected", channel_id=cid,
-                             event1_start=iso(current["start"]), event1_end=iso(current["end"]),
-                             event2_start=iso(nxt["start"]), event2_end=iso(nxt["end"]), action="drop_later")
+                        jlog(
+                            level="warning",
+                            event="event_overlap_detected",
+                            channel_id=cid,
+                            event1_start=iso(current["start"]),
+                            event1_end=iso(current["end"]),
+                            event2_start=iso(nxt["start"]),
+                            event2_end=iso(nxt["end"]),
+                            action="drop_later",
+                        )
                         cleaned.append(current)
                         i += 2
                         continue
@@ -355,6 +449,7 @@ def build_plan(
 
     return snapped
 
+
 # ---------- Persist plan ----------
 def checksum_rows(rows: Iterable[dict]) -> str:
     m = hashlib.sha256()
@@ -363,7 +458,14 @@ def checksum_rows(rows: Iterable[dict]) -> str:
         m.update(b"\n")
     return m.hexdigest()
 
-def write_plan(conn: sqlite3.Connection, plan_slots: List[dict], start_dt_utc: datetime, end_dt_utc: datetime, note: str) -> Tuple[int, str]:
+
+def write_plan(
+    conn: sqlite3.Connection,
+    plan_slots: List[dict],
+    start_dt_utc: datetime,
+    end_dt_utc: datetime,
+    note: str,
+) -> Tuple[int, str]:
     rows_for_ck = [
         {
             "channel_id": ps["channel_id"],
@@ -379,11 +481,18 @@ def write_plan(conn: sqlite3.Connection, plan_slots: List[dict], start_dt_utc: d
     with conn:
         cur = conn.execute(
             "INSERT INTO plan_run(generated_at_utc,valid_from_utc,valid_to_utc,source_version,note,checksum) VALUES(?,?,?,?,?,?)",
-            (iso(datetime.now(timezone.utc)), iso(start_dt_utc), iso(end_dt_utc), f"builder:{VERSION}", note, ck),
+            (
+                iso(datetime.now(timezone.utc)),
+                iso(start_dt_utc),
+                iso(end_dt_utc),
+                f"builder:{VERSION}",
+                note,
+                ck,
+            ),
         )
         plan_id = cur.lastrowid
         conn.executemany(
-            "INSERT INTO plan_slot(plan_id,channel_id,event_id,start_utc,end_utc,kind,placeholder_reason,preferred_feed_id) VALUES(?,?,?,?,?,?,?,NULL)",
+            "INSERT INTO plan_slot(plan_id,channel_id,event_id,start_utc,end_utc,kind,placeholder_reason,preferred_feed_id) VALUES(?,?,?,?,?,?,?,NULL)",  # noqa: E501
             [
                 (
                     plan_id,
@@ -403,13 +512,17 @@ def write_plan(conn: sqlite3.Connection, plan_slots: List[dict], start_dt_utc: d
         )
     return int(plan_id), ck
 
+
 # ---------- New default-start helper ----------
 def _get_previous_plan_start(conn: sqlite3.Connection) -> Optional[str]:
     try:
-        row = conn.execute("SELECT valid_from_utc FROM plan_run ORDER BY id DESC LIMIT 1").fetchone()
+        row = conn.execute(
+            "SELECT valid_from_utc FROM plan_run ORDER BY id DESC LIMIT 1"
+        ).fetchone()
         return row[0] if row and row[0] else None
     except Exception:
         return None
+
 
 # ---------- Main ----------
 def main() -> None:
@@ -427,6 +540,7 @@ def main() -> None:
         if start_str.startswith("-") or start_str.startswith("+"):
             # offset like -6h / +90m
             import re
+
             m = re.match(r"^([+-]?)(\d+)([hm])$", start_str)
             if m:
                 sign, value, unit = m.groups()
@@ -439,7 +553,10 @@ def main() -> None:
                     start_local = datetime.now(tz) + timedelta(minutes=value_i)
                 start_local = start_local.replace(second=0, microsecond=0)
             else:
-                jlog(event="plan_build_error", error=f"Invalid offset format: {start_str}")
+                jlog(
+                    event="plan_build_error",
+                    error=f"Invalid offset format: {start_str}",
+                )
                 start_local = datetime.now(tz).replace(second=0, microsecond=0)
         else:
             # Absolute datetime
@@ -451,7 +568,10 @@ def main() -> None:
                     parts = start_str.replace(" ", "T")
                     dt = datetime.fromisoformat(parts)
                 except Exception:
-                    jlog(event="plan_build_error", error=f"Invalid datetime format: {start_str}")
+                    jlog(
+                        event="plan_build_error",
+                        error=f"Invalid datetime format: {start_str}",
+                    )
                     dt = datetime.now(tz)
             if dt.tzinfo is None:
                 start_local = dt.replace(tzinfo=tz)
@@ -466,7 +586,9 @@ def main() -> None:
             grace_hours = int(os.environ.get("BUILDER_DEFAULT_START_GRACE_HOURS", "4"))
         except Exception:
             grace_hours = 2
-        start_local = (datetime.now(tz) - timedelta(hours=grace_hours)).replace(second=0, microsecond=0)
+        start_local = (datetime.now(tz) - timedelta(hours=grace_hours)).replace(
+            second=0, microsecond=0
+        )
         jlog(event="default_start_now_minus_grace", grace_hours=grace_hours)
 
     start_utc = start_local.astimezone(timezone.utc)
@@ -477,7 +599,46 @@ def main() -> None:
     # seed + load
     seeded = seed_channels_if_empty(conn, args.lanes)
     channels = load_channels(conn)
-    events = load_events(conn, start_utc.isoformat(), end_utc.isoformat())
+
+    # NEW: Apply event filtering if filters.ini exists
+    filtered_event_ids = None
+    filter_config_path = os.path.join(BASE_DIR, "filters.ini")
+
+    if FILTERS_AVAILABLE and os.path.exists(filter_config_path):
+        try:
+            jlog(event="filter_loading", path=filter_config_path)
+            event_filter = EventFilter(filter_config_path)
+            filter_summary = event_filter.get_filter_summary()
+
+            # Get filtered event IDs
+            filtered_event_ids = filter_events_from_db(conn, event_filter)
+
+            jlog(
+                event="filter_applied",
+                total_events_before_time_filter=conn.execute(
+                    "SELECT COUNT(*) FROM events"
+                ).fetchone()[0],
+                filtered_event_ids=len(filtered_event_ids),
+                filter_summary=filter_summary,
+            )
+        except Exception as e:
+            jlog(
+                level="warning",
+                event="filter_error",
+                error=str(e),
+                message="Proceeding without filters",
+            )
+            filtered_event_ids = None
+    elif os.path.exists(filter_config_path):
+        jlog(
+            level="warning",
+            event="filter_module_missing",
+            message="filters.ini found but filter_events module not available",
+        )
+
+    events = load_events(
+        conn, start_utc.isoformat(), end_utc.isoformat(), event_ids=filtered_event_ids
+    )
 
     # Sticky lanes: seed from latest plan (one-time) and load map
     seeded_sticky = _seed_event_lane_from_latest_plan(conn)
@@ -500,7 +661,16 @@ def main() -> None:
         build_version=BUILD_VERSION,
     )
 
-    plan_slots = build_plan(conn, channels, events, start_utc, end_utc, min_gap, args.align, _sticky_map=sticky_map)
+    plan_slots = build_plan(
+        conn,
+        channels,
+        events,
+        start_utc,
+        end_utc,
+        min_gap,
+        args.align,
+        _sticky_map=sticky_map,
+    )
 
     by_ch: Dict[str, Dict[str, int]] = {}
     ev_count = ph_count = 0
@@ -523,6 +693,7 @@ def main() -> None:
         placeholder_slots=ph_count,
         by_channel=by_ch,
     )
+
 
 if __name__ == "__main__":
     try:

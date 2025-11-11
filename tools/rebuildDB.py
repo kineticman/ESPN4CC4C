@@ -2,7 +2,10 @@
 # file: rebuildDB.py
 # Purpose: Ensure/repair ESPN4CC DB schema + seed base data safely.
 
-import argparse, os, sqlite3, sys, json
+import argparse
+import json
+import sqlite3
+import sys
 from pathlib import Path
 
 SCHEMA = {
@@ -106,40 +109,40 @@ SCHEMA = {
 # Columns we want to guarantee exist (used for ALTER TABLE adds)
 WANT_COLS = {
     "plan_run": {
-        "checksum":         "TEXT",
-        "starts_at":        "INTEGER",
-        "ends_at":          "INTEGER",
-        "note":             "TEXT",
-        "created_at":       "INTEGER",
+        "checksum": "TEXT",
+        "starts_at": "INTEGER",
+        "ends_at": "INTEGER",
+        "note": "TEXT",
+        "created_at": "INTEGER",
         "generated_at_utc": "INTEGER",
-        "valid_from_utc":   "INTEGER",
-        "valid_to_utc":     "INTEGER",
-        "source_version":   "TEXT",
+        "valid_from_utc": "INTEGER",
+        "valid_to_utc": "INTEGER",
+        "source_version": "TEXT",
     },
     "plan_slot": {
-        "plan_id":            "INTEGER",
-        "lane":               "INTEGER",
-        "chno":               "INTEGER",
-        "channel_id":         "INTEGER",
-        "event_id":           "INTEGER",
-        "title":              "TEXT",
-        "starts_at":          "INTEGER",
-        "ends_at":            "INTEGER",
-        "start_utc":          "TEXT",
-        "end_utc":            "TEXT",
-        "is_placeholder":     "INTEGER",
+        "plan_id": "INTEGER",
+        "lane": "INTEGER",
+        "chno": "INTEGER",
+        "channel_id": "INTEGER",
+        "event_id": "INTEGER",
+        "title": "TEXT",
+        "starts_at": "INTEGER",
+        "ends_at": "INTEGER",
+        "start_utc": "TEXT",
+        "end_utc": "TEXT",
+        "is_placeholder": "INTEGER",
         "placeholder_reason": "TEXT",
-        "feed_url":           "TEXT",
-        "preferred_feed_id":  "INTEGER",
+        "feed_url": "TEXT",
+        "preferred_feed_id": "INTEGER",
         "preferred_feed_url": "TEXT",
-        "kind":               "TEXT",
-        "created_at":         "INTEGER",
+        "kind": "TEXT",
+        "created_at": "INTEGER",
     },
     "channel": {
-        "chno":       "INTEGER",
-        "name":       "TEXT",
+        "chno": "INTEGER",
+        "name": "TEXT",
         "group_name": "TEXT",
-        "active":     "INTEGER",
+        "active": "INTEGER",
     },
 }
 
@@ -233,14 +236,27 @@ def ensure_plan_meta(cur: sqlite3.Cursor):
 
 def main():
     ap = argparse.ArgumentParser(description="Rebuild/repair ESPN4CC SQLite DB schema.")
-    ap.add_argument("--db", default="./data/eplus_vc.sqlite3",
-                    help="Path to SQLite DB (default: ./data/eplus_vc.sqlite3)")
-    ap.add_argument("--lanes", type=int, default=40,
-                    help="How many ESPN+ channels to seed if empty (default: 40)")
-    ap.add_argument("--wipe-plans", action="store_true",
-                    help="Delete all rows from plan_run/plan_slot/plan_meta before finishing (safe reset).")
-    ap.add_argument("--drop-unique-plan-run", action="store_true",
-                    help="Drop any UNIQUE indexes on plan_run (prevents checksum duplicate errors).")
+    ap.add_argument(
+        "--db",
+        default="./data/eplus_vc.sqlite3",
+        help="Path to SQLite DB (default: ./data/eplus_vc.sqlite3)",
+    )
+    ap.add_argument(
+        "--lanes",
+        type=int,
+        default=40,
+        help="How many ESPN+ channels to seed if empty (default: 40)",
+    )
+    ap.add_argument(
+        "--wipe-plans",
+        action="store_true",
+        help="Delete all rows from plan_run/plan_slot/plan_meta before finishing (safe reset).",
+    )
+    ap.add_argument(
+        "--drop-unique-plan-run",
+        action="store_true",
+        help="Drop any UNIQUE indexes on plan_run (prevents checksum duplicate errors).",
+    )
     args = ap.parse_args()
 
     db_path = Path(args.db)
@@ -290,8 +306,14 @@ def main():
     # 8) Report
     report = {
         "db": str(db_path),
-        "tables": sorted([r[0] for r in cur.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'")]),
+        "tables": sorted(
+            [
+                r[0]
+                for r in cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            ]
+        ),
         "channel_cols": columns(cur, "channel"),
         "plan_run_cols": columns(cur, "plan_run"),
         "plan_slot_cols": columns(cur, "plan_slot"),
@@ -305,12 +327,13 @@ def main():
         "wiped_plans": wiped,
         "counts": {
             "channel_active": cur.execute(
-                "SELECT COUNT(*) FROM channel WHERE active=1").fetchone()[0],
+                "SELECT COUNT(*) FROM channel WHERE active=1"
+            ).fetchone()[0],
             "plan_run": cur.execute("SELECT COUNT(*) FROM plan_run").fetchone()[0],
             "plan_slot": cur.execute("SELECT COUNT(*) FROM plan_slot").fetchone()[0],
             "events": cur.execute("SELECT COUNT(*) FROM events").fetchone()[0],
             "feeds": cur.execute("SELECT COUNT(*) FROM feeds").fetchone()[0],
-        }
+        },
     }
     print(json.dumps(report, indent=2))
 

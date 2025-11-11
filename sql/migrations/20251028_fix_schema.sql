@@ -39,4 +39,3 @@ DROP TABLE IF EXISTS event_lane;
 ALTER TABLE _event_lane_v3 RENAME TO event_lane;
 
 COMMIT;
-

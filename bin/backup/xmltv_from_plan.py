@@ -11,12 +11,12 @@ xmltv_from_plan.py — Build XMLTV from ESPN4CC4C DB plan.
 
 import argparse
 import os
-import sys
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
-GENERATOR = 'espn-clean-v2.1'
+GENERATOR = "espn-clean-v2.1"
 
 
 def iso_to_xmltv(iso: str) -> str:
@@ -28,22 +28,24 @@ def iso_to_xmltv(iso: str) -> str:
         return ""
     s = iso.strip()
     # tolerate 'YYYY-MM-DDTHH:MM:SS' (naive) and '+00:00' variant
-    if s.endswith('Z'):
-        s = s[:-1] + '+00:00'
-    if '+' not in s[10:] and '-' not in s[10:]:
-        s += '+00:00'
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    if "+" not in s[10:] and "-" not in s[10:]:
+        s += "+00:00"
     try:
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         dt = dt.astimezone(timezone.utc)
-        return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
+        return dt.strftime("%Y%m%d%H%M%S") + " +0000"
     except Exception:
         # last-ditch: strip offset manually
         try:
-            base = s.split('+', 1)[0].split('-', 1)[0] if '+' in s else s.split('-', 1)[0]
+            base = (
+                s.split("+", 1)[0].split("-", 1)[0] if "+" in s else s.split("-", 1)[0]
+            )
             dt = datetime.fromisoformat(base)
-            return dt.strftime('%Y%m%d%H%M%S') + ' +0000'
+            return dt.strftime("%Y%m%d%H%M%S") + " +0000"
         except Exception:
             return ""
 
@@ -52,12 +54,14 @@ def fetch_channels(conn: sqlite3.Connection):
     """
     Return list of dicts: {id(str), name(str), lcn(str)} for active channels.
     """
-    rows = conn.execute("""
+    rows = conn.execute(
+        """
         SELECT id, name, chno, COALESCE(active,1) AS active
         FROM channel
         WHERE COALESCE(active,1)=1
         ORDER BY COALESCE(chno,id)
-    """).fetchall()
+    """
+    ).fetchall()
 
     out = []
     for r in rows:
@@ -85,12 +89,15 @@ def fetch_rows_latest_plan(conn: sqlite3.Connection):
         return None, []
 
     pid = int(row["pid"])
-    rows = conn.execute("""
+    rows = conn.execute(
+        """
         SELECT channel_id, start_utc, end_utc, kind, title
         FROM plan_slot
         WHERE plan_id = ?
         ORDER BY channel_id, start_utc
-    """, (pid,)).fetchall()
+    """,
+        (pid,),
+    ).fetchall()
     return pid, rows
 
 
@@ -100,9 +107,9 @@ def write_channels(f, channels):
         name = escape(ch["name"])
         lcn = escape(ch["lcn"])
         f.write(f'  <channel id="{cid}">\n')
-        f.write(f'    <display-name>{name}</display-name>\n')
-        f.write(f'    <lcn>{lcn}</lcn>\n')
-        f.write('  </channel>\n')
+        f.write(f"    <display-name>{name}</display-name>\n")
+        f.write(f"    <lcn>{lcn}</lcn>\n")
+        f.write("  </channel>\n")
 
 
 def write_programmes(f, rows):
@@ -113,13 +120,15 @@ def write_programmes(f, rows):
         kind = (r["kind"] or "").strip()
         title = r["title"] or ("Sports" if kind == "event" else "Stand By")
 
-        f.write(f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n')
-        f.write(f'    <title>{escape(title)}</title>\n')
+        f.write(
+            f'  <programme channel="{escape(cid)}" start="{escape(start)}" stop="{escape(stop)}">\n'
+        )
+        f.write(f"    <title>{escape(title)}</title>\n")
         # minimal, clean — add <desc/> here if you want later
         # tag live-ish events (optional): uncomment if you'd like a <live/> node for events
         # if kind == "event":
         #     f.write('    <live/>\n')
-        f.write('  </programme>\n')
+        f.write("  </programme>\n")
 
 
 def main():
@@ -161,7 +170,7 @@ def main():
             # Programmes
             write_programmes(f, rows)
 
-            f.write('</tv>\n')
+            f.write("</tv>\n")
 
         print("[xmltv] wrote XML successfully")
         return 0

@@ -11,8 +11,8 @@ by the deadline, it **sends the `f` key via xdotool**.
 
 ## 1) Prerequisites
 - Running `cc4c` container (image `bnhf/cc4c:latest`)
-- Patched file saved on the host, e.g.:  
-  `contrib/cc4c/main.cc4c-autofs.20251030-222408.js`  
+- Patched file saved on the host, e.g.:
+  `contrib/cc4c/main.cc4c-autofs.20251030-222408.js`
   (and optional checksum: `contrib/cc4c/main.cc4c-autofs.20251030-222408.js.sha256`)
 
 ## 2) Backup the container’s current file

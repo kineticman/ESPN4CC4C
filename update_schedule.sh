@@ -144,6 +144,30 @@ SELECT
 echo "== first non-placeholder title =="
 grep -m1 -A1 -B2 -F "<title>" "$HOST_OUT/epg.xml" || true
 
+# --- filter summary (if filters.ini exists) ---
+if [ -f "filters.ini" ]; then
+  echo "== filter summary =="
+  docker compose exec -T espn4cc bash -lc '
+    set -e
+    : "${DB:=/app/data/eplus_vc.sqlite3}"
+    total_events=$(sqlite3 "$DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0)
+    latest_plan=$(sqlite3 "$DB" "SELECT MAX(plan_id) FROM plan_slot;" 2>/dev/null || echo 0)
+    if [ "$latest_plan" -gt 0 ]; then
+      included_events=$(sqlite3 "$DB" "SELECT COUNT(DISTINCT event_id) FROM plan_slot WHERE plan_id=$latest_plan AND kind=\"event\" AND event_id IS NOT NULL;" 2>/dev/null || echo 0)
+      filtered_out=$((total_events - included_events))
+      echo "total_events_in_db=$total_events  included_in_plan=$included_events  filtered_out=$filtered_out"
+
+      # Show breakdown by filter dimension if we have filter stats
+      if [ -f /app/filters.ini ]; then
+        echo "Active filters: /app/filters.ini"
+        grep -E "^(enabled_|exclude_|require_)" /app/filters.ini | grep -v "^#" | grep -v "= \*$" | grep -v "= $" | sed "s/^/  /" || echo "  (all filters set to default '*')"
+      fi
+    else
+      echo "No plan generated yet"
+    fi
+  ' || echo "(filter summary unavailable)"
+fi
+
 # Provenance
 echo "[info] git describe: $(git describe --tags --always --dirty 2>/dev/null || echo n/a)"
 

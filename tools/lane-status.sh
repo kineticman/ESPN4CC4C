@@ -3,6 +3,7 @@ set -euo pipefail
 
 H=${1:-$(hostname -I | awk '{print $1}')}
 BASE="http://$H:8094"
+LANES=${LANES:-40}
 
 # Best-effort readiness
 for _ in {1..40}; do curl -fsS "$BASE/health" >/dev/null && break || sleep 0.25; done
@@ -10,7 +11,8 @@ for _ in {1..40}; do curl -fsS "$BASE/health" >/dev/null && break || sleep 0.25;
 live=0; slate=0; other=0
 declare -a live_list=() slate_list=()
 
-for l in eplus{1..40}; do
+for i in $(seq 1 "$LANES"); do
+  l="eplus${i}"
   out="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/vc/$l" || echo '000 ')"
   code="${out%% *}"; loc="${out#* }"
 
@@ -23,6 +25,6 @@ for l in eplus{1..40}; do
   fi
 done
 
-printf "Total: 40  Live: %d  Placeholders: %d  Other: %d\n" "$live" "$slate" "$other"
+printf "Total: %d  Live: %d  Placeholders: %d  Other: %d\n" "$LANES" "$live" "$slate" "$other"
 printf "Live lanes: %s\n" "${live_list[*]}"
 printf "Placeholder lanes: %s\n" "${slate_list[*]}"
