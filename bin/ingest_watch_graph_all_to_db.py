@@ -84,6 +84,7 @@ query Airings(
     league  { id name abbreviation }
     sport   { id name abbreviation }
     packages { name }
+    image { url }
   }
 }
 """.strip()
@@ -308,6 +309,12 @@ def main():
                     else None
                 )
 
+                # Extract image URL from nested image object
+                image_obj = a.get("image") or {}
+                image_url = (
+                    image_obj.get("url") if isinstance(image_obj, dict) else None
+                )
+
                 eid = stable_event_id("espn-watch", base_id)
                 upsert_event(
                     conn,
@@ -318,8 +325,8 @@ def main():
                         "title": title,
                         "sport": sport_obj.get("name"),
                         "subtitle": None,
-                        "summary": league_obj.get("name"),
-                        "image": None,
+                        "summary": None,  # Don't use league name as summary - it's redundant
+                        "image": image_url,
                         "network": network_obj.get("name"),
                         "network_id": network_obj.get("id"),
                         "network_short": network_obj.get("shortName"),
