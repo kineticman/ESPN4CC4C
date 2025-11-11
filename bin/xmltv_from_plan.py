@@ -225,7 +225,7 @@ def write_programmes(f, rows):
         if kind == "event":
             # ENHANCED DESCRIPTION - Build engaging content from all available parts
             desc_parts = []
-            
+
             # Start with league/competition for context (avoid duplication)
             if league_name and league_name != sport:
                 desc_parts.append(league_name)
@@ -234,17 +234,17 @@ def write_programmes(f, rows):
             elif sport:
                 # If we don't have league, use sport
                 desc_parts.append(sport)
-            
+
             # Build engaging matchup/event description - ALWAYS include title
             event_desc = None
-            
+
             # Check if summary is actually useful or just a duplicate
             useful_summary = (
-                summary 
+                summary
                 and summary not in [league_name, league_abbr, sport, sport_abbr]
                 and len(summary) > 20  # Real summaries are descriptive sentences
             )
-            
+
             if useful_summary:
                 # Use summary directly if it's actually descriptive
                 event_desc = summary
@@ -257,15 +257,17 @@ def write_programmes(f, rows):
                 if title and title not in [league_name, league_abbr, sport, sport_abbr]:
                     event_desc = title
                 # If title is a duplicate of league/sport, we'll skip the desc entirely
-            
+
             # Add network/broadcast info for extra context
             network_info = network or network_short
-            
+
             # Assemble the final description with style
             if event_desc:
                 if desc_parts and network_info:
                     # Full package: "NCAA Football: SMU vs. Boston College (ACCN)"
-                    final_desc = f"{' • '.join(desc_parts)}: {event_desc} ({network_info})"
+                    final_desc = (
+                        f"{' • '.join(desc_parts)}: {event_desc} ({network_info})"
+                    )
                 elif desc_parts:
                     # League + event: "NCAA Football: SMU vs. Boston College"
                     final_desc = f"{' • '.join(desc_parts)}: {event_desc}"
@@ -275,7 +277,7 @@ def write_programmes(f, rows):
                 else:
                     # Bare minimum: just the title
                     final_desc = event_desc
-                
+
                 f.write(f"    <desc>{escape(final_desc)}</desc>\n")
             elif desc_parts:
                 # Fallback: just show what we have
@@ -287,34 +289,35 @@ def write_programmes(f, rows):
 
             # CATEGORIES - Build comprehensive category tree
             f.write("    <category>Sports</category>\n")
-            
+
             # Sport category (use full name if available, otherwise abbreviation)
             if sport:
                 f.write(f"    <category>{escape(sport)}</category>\n")
             elif sport_abbr:
                 f.write(f"    <category>{escape(sport_abbr)}</category>\n")
-            
+
             # League/Competition category
             if league_name:
                 f.write(f"    <category>{escape(league_name)}</category>\n")
             elif league_abbr:
                 f.write(f"    <category>{escape(league_abbr)}</category>\n")
-            
+
             # Network category
             if network:
                 f.write(f"    <category>{escape(network)}</category>\n")
             elif network_short:
                 f.write(f"    <category>{escape(network_short)}</category>\n")
-            
+
             # Generic event categories
             f.write("    <category>Sports Event</category>\n")
             f.write("    <category>Live</category>\n")
-            
+
             # Package indicator (ESPN+, ESPN3, etc.)
             if packages:
                 # Handle JSON array or comma-separated
                 try:
                     import json
+
                     pkg_list = json.loads(packages)
                     for pkg in pkg_list:
                         f.write(f"    <category>{escape(pkg)}</category>\n")
@@ -322,21 +325,21 @@ def write_programmes(f, rows):
                     # Not JSON, treat as plain text
                     if packages not in ["null", "None", ""]:
                         f.write(f"    <category>{escape(packages)}</category>\n")
-            
+
             # Event type (LIVE, REPLAY only - skip UPCOMING)
             if event_type and event_type.upper() in ["LIVE", "REPLAY"]:
                 f.write(f"    <category>{escape(event_type)}</category>\n")
-            
+
             f.write("    <category>ESPNCC4C</category>\n")
 
             # ICON/IMAGE - Thumbnail from ESPN
-            if image and image.startswith('http'):
+            if image and image.startswith("http"):
                 f.write(f'    <icon src="{escape(image)}" />\n')
 
             # URL - Virtual channel resolver
             url = f"{DEFAULT_RESOLVER}/vc/{cid}"
             f.write(f"    <url>{escape(url)}</url>\n")
-            
+
             # LIVE tag for live events
             if event_type and event_type.upper() == "LIVE":
                 f.write("    <live>1</live>\n")

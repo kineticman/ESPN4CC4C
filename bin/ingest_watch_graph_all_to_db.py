@@ -315,7 +315,9 @@ def main():
 
                 # Extract image URL from nested image object
                 image_obj = a.get("image") or {}
-                image_url = image_obj.get("url") if isinstance(image_obj, dict) else None
+                image_url = (
+                    image_obj.get("url") if isinstance(image_obj, dict) else None
+                )
 
                 # Get language (e.g., "en", "es", etc.)
                 language = a.get("language")
