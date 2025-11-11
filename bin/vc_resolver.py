@@ -8,14 +8,8 @@ from typing import Optional
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import (
-    FileResponse,
-    HTMLResponse,
-    JSONResponse,
-    PlainTextResponse,
-    RedirectResponse,
-    Response,
-)
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               PlainTextResponse, RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 
 # --- ChromeCapture config ---
