@@ -19,6 +19,14 @@ from xml.sax.saxutils import escape
 
 GENERATOR = "espn-clean-v2.1"
 
+
+# Resolver base (env-first; matches m3u_from_plan)
+DEFAULT_RESOLVER = (
+    os.getenv("VC_RESOLVER_BASE_URL")
+    or os.getenv("VC_RESOLVER_ORIGIN")
+    or "http://127.0.0.1:8094"
+)
+
 # Try to import channel start from config, fallback to default
 try:
     from config import CHANNEL_START_CHNO as CFG_CHANNEL_START_CHNO
@@ -212,7 +220,7 @@ def write_programmes(f, rows):
             f.write("    <category>ESPNCC4C</category>\n")
 
             # URL - construct from channel ID
-            url = f"http://192.168.86.80:8094/vc/{cid}"
+            url = f"{DEFAULT_RESOLVER}/vc/{cid}"
             f.write(f"    <url>{escape(url)}</url>\n")
 
         f.write("  </programme>\n")
