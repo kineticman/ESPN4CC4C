@@ -397,6 +397,7 @@ def migrate_filter_columns(cur):
         "event_type": "TEXT",
         "airing_id": "TEXT",
         "simulcast_airing_id": "TEXT",
+        "language": "TEXT",
     }
 
     # Check which columns are missing

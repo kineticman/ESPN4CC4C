@@ -85,6 +85,7 @@ query Airings(
     sport   { id name abbreviation }
     packages { name }
     image { url }
+    language
   }
 }
 """.strip()
@@ -130,7 +131,8 @@ def ensure_schema(conn: sqlite3.Connection):
       packages TEXT,
       event_type TEXT,
       airing_id TEXT,
-      simulcast_airing_id TEXT
+      simulcast_airing_id TEXT,
+      language TEXT
     );
     CREATE TABLE IF NOT EXISTS feeds(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,6 +166,7 @@ def migrate_schema(conn: sqlite3.Connection):
         "event_type": "TEXT",
         "airing_id": "TEXT",
         "simulcast_airing_id": "TEXT",
+        "language": "TEXT",
     }
 
     # Add missing columns
@@ -201,6 +204,7 @@ def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
         "event_type",
         "airing_id",
         "simulcast_airing_id",
+        "language",
     )
     vals = [row.get(k) for k in cols]
     placeholders = ",".join(["?"] * len(cols))
@@ -311,9 +315,10 @@ def main():
 
                 # Extract image URL from nested image object
                 image_obj = a.get("image") or {}
-                image_url = (
-                    image_obj.get("url") if isinstance(image_obj, dict) else None
-                )
+                image_url = image_obj.get("url") if isinstance(image_obj, dict) else None
+
+                # Get language (e.g., "en", "es", etc.)
+                language = a.get("language")
 
                 eid = stable_event_id("espn-watch", base_id)
                 upsert_event(
@@ -339,6 +344,7 @@ def main():
                         "event_type": a.get("type"),
                         "airing_id": a.get("airingId"),
                         "simulcast_airing_id": a.get("simulcastAiringId"),
+                        "language": language,
                     },
                 )
                 replace_feeds(conn, eid, [espn_player_url(a)])
