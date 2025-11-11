@@ -137,8 +137,13 @@ def ensure_created_at_default(cur):
       valid_to_utc     INTEGER,
       source_version   TEXT
     );
-    INSERT INTO plan_run(id,checksum,starts_at,ends_at,note,created_at,generated_at_utc,valid_from_utc,valid_to_utc,source_version)  # noqa: E501
-    SELECT id,checksum,starts_at,ends_at,note,COALESCE(created_at, strftime('%s','now')),generated_at_utc,valid_from_utc,valid_to_utc,source_version  # noqa: E501
+    INSERT INTO plan_run(
+      id, checksum, starts_at, ends_at, note, created_at,
+      generated_at_utc, valid_from_utc, valid_to_utc, source_version
+    )
+    SELECT id, checksum, starts_at, ends_at, note,
+           COALESCE(created_at, strftime('%s','now')),
+           generated_at_utc, valid_from_utc, valid_to_utc, source_version
     FROM _plan_run_migrate;
     DROP TABLE _plan_run_migrate;
     COMMIT;
