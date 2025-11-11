@@ -36,6 +36,8 @@ class EventFilter:
                 "exclude_ppv": "false",
                 "enabled_event_types": "*",
                 "exclude_event_types": "",
+                "enabled_languages": "*",
+                "exclude_languages": "",
                 "case_insensitive": "true",
                 "partial_league_match": "true",
             }
@@ -67,6 +69,10 @@ class EventFilter:
         # Parse event type filters
         self.enabled_event_types = self._parse_set(f.get("enabled_event_types", "*"))
         self.exclude_event_types = self._parse_set(f.get("exclude_event_types", ""))
+
+        # Parse language filters
+        self.enabled_languages = self._parse_set(f.get("enabled_languages", "*"))
+        self.exclude_languages = self._parse_set(f.get("exclude_languages", ""))
 
         # Parse ESPN+ / PPV filters
         self.require_espn_plus = self._parse_bool(f.get("require_espn_plus", ""))
@@ -157,7 +163,7 @@ class EventFilter:
 
         Args:
             event: Dict with keys: network, network_short, sport, sport_abbr,
-                   league_name, league_abbr, packages, event_type
+                   league_name, league_abbr, packages, event_type, language
 
         Returns:
             True if event passes all filters, False otherwise
@@ -200,6 +206,15 @@ class EventFilter:
                 return False
         if self.exclude_event_types:
             if self._match_in_set(event_type, self.exclude_event_types):
+                return False
+
+        # Language filtering
+        language = event.get("language")
+        if self.enabled_languages is not None:
+            if not self._match_in_set(language, self.enabled_languages):
+                return False
+        if self.exclude_languages:
+            if self._match_in_set(language, self.exclude_languages):
                 return False
 
         # ESPN+ / PPV filtering
@@ -261,6 +276,11 @@ class EventFilter:
             if self.exclude_event_types:
                 lines.append(f"    Excluding: {format_set(self.exclude_event_types)}")
 
+        if self.enabled_languages is not None or self.exclude_languages:
+            lines.append(f"  Languages: {format_set(self.enabled_languages)}")
+            if self.exclude_languages:
+                lines.append(f"    Excluding: {format_set(self.exclude_languages)}")
+
         if self.require_espn_plus is not None:
             lines.append(f"  ESPN+ Required: {self.require_espn_plus}")
 
@@ -293,7 +313,7 @@ def filter_events_from_db(conn, filter_config: EventFilter) -> List[str]:
     cursor.execute(
         """
         SELECT id, network, network_short, sport, sport_abbr,
-               league_name, league_abbr, packages, event_type
+               league_name, league_abbr, packages, event_type, language
         FROM events
     """
     )
@@ -313,6 +333,7 @@ def filter_events_from_db(conn, filter_config: EventFilter) -> List[str]:
             "league_abbr": row[6],
             "packages": row[7],
             "event_type": row[8],
+            "language": row[9],
         }
 
         if filter_config.should_include(event):
