@@ -10,8 +10,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # GHCR needs lowercase image path
-  IMAGE_NAME: ${{ toLower(github.repository) }}   # <-- changed
 
 jobs:
   build-and-push:
@@ -23,6 +21,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Prepare image name (lowercase)
+        id: prep
+        run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -44,21 +46,18 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.prep.outputs.image }}
           tags: |
-            # latest for default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # semver tags derived from annotated tags like v5.0.0
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # branch/PR/sha flavors
             type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=ref,event=pr
             type=sha,prefix={{branch}}-
 
       - name: Build and push Docker image
-        id: build                     # <-- added id so outputs.digest exists
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -73,6 +72,6 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@v1
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.build.outputs.digest }}   # now resolves
+          subject-name: ${{ env.REGISTRY }}/${{ steps.prep.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
