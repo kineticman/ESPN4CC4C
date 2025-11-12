@@ -1,6 +1,6 @@
 services:
   espn4cc4c:
-    image: ghcr.io/kineticman/espn4cc4c:v5.0.0
+    image: ghcr.io/kineticman/espn4cc4c:latest
     # For devs: comment image above and uncomment below to build locally
     # build: .
 
@@ -21,7 +21,7 @@ services:
 
       # Player target
       CC_HOST: "192.168.86.72"
-      CC_PORT: "5589"   # <- set "8094" if targeting Channels DVR
+      CC_PORT: "5589"
 
       # Service/App
       PORT: "8094"
