@@ -1,50 +1,50 @@
 services:
   espn4cc4c:
-    image: ghcr.io/kineticman/espn4cc4c:latest
-    # For devs: comment image above and uncomment below to build locally
-    # build: .
-
+    # GH: https://github.com/kineticman/ESPN4CC4C
+    # GHCR: https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
+    image: ghcr.io/kineticman/espn4cc4c:${TAG:-latest}
     container_name: espn4cc4c
+    init: true
+    stop_grace_period: 20s
 
     ports:
-      - "8094:8094"
-
-    volumes:
-      - ./data:/app/data
-      - ./out:/app/out
-      - ./logs:/app/logs
+      - ${PORT:-8094}:${PORT:-8094}
 
     environment:
-      # Required
-      TZ: "America/New_York"
-      VC_RESOLVER_BASE_URL: "http://192.168.86.72:8094"
+      - TZ=${TZ:-America/New_York}
+      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.168.86.72:8094}
+      - CC_HOST=${CC_HOST:-192.168.86.72}
+      - CC_PORT=${CC_PORT:-5589}
+      - PORT=${PORT:-8094}
+      - APP_MODULE=${APP_MODULE:-bin.vc_resolver:app}
+      - VALID_HOURS=${VALID_HOURS:-72}
+      - LANES=${LANES:-40}
+      - ALIGN=${ALIGN:-30}
+      - MIN_GAP_MINS=${MIN_GAP_MINS:-30}
+      - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
+      - VC_M3U_PATH=${VC_M3U_PATH:-/app/out/playlist.m3u}
+      - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
 
-      # Player target
-      CC_HOST: "192.168.86.72"
-      CC_PORT: "5589"
+    volumes:
+      - ${HOST_DIR:-.}/data:/app/data
+      - ${HOST_DIR:-.}/out:/app/out
+      - ${HOST_DIR:-.}/logs:/app/logs
 
-      # Service/App
-      PORT: "8094"
-      APP_MODULE: "bin.vc_resolver:app"
-
-      # Planner knobs
-      VALID_HOURS: "72"
-      LANES: "40"
-      ALIGN: "30"
-      MIN_GAP_MINS: "30"
-
-      # M3U appearance
-      M3U_GROUP_TITLE: "ESPN+ VC"
-      VC_M3U_PATH: "/app/out/playlist.m3u"
-
-      # Optional (ingest helpers)
-      WATCH_API_KEY: "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"
-
-    restart: unless-stopped
+    dns_search:
+      - ${DOMAIN:-localdomain}
+      - ${TAILNET:-tailxxxxx.ts.net}
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8094/health"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${PORT:-8094}/health >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    restart: unless-stopped
