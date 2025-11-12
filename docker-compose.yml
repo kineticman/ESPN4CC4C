@@ -1,38 +1,50 @@
 services:
-  espn4cc:
-    container_name: espn4cc
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - TZ=${TZ:-America/New_York}
-      - PORT=${PORT:-8094}
-      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}
-      - VC_RESOLVER_ORIGIN=${VC_RESOLVER_BASE_URL:-http://127.0.0.1:8094}
-      - DB=${DB:-./data/eplus_vc.sqlite3}
-      - OUT=${OUT:-./out}
-      - LOGS=${LOGS:-./logs}
-      - VALID_HOURS=${VALID_HOURS:-72}
-      - LANES=${LANES:-40}
-      - ALIGN=${ALIGN:-30}
-      - MIN_GAP_MINS=${MIN_GAP_MINS:-30}
-      - CC_HOST=${CC_HOST:-127.0.0.1}
-      - CC_PORT=${CC_PORT:-5589}
-      - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
-      - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
-      - VC_M3U_PATH=${VC_M3U_PATH:-./out/playlist.m3u}   # optional; matches .env.example
+  espn4cc4c:
+    image: ghcr.io/kineticman/espn4cc4c:v5.0.0
+    # For devs: comment image above and uncomment below to build locally
+    # build: .
+
+    container_name: espn4cc4c
+
     ports:
-      - "${PORT:-8094}:${PORT:-8094}"
+      - "8094:8094"
+
     volumes:
       - ./data:/app/data
-      - ./logs:/app/logs
       - ./out:/app/out
-      - ./:/app
+      - ./logs:/app/logs
+
+    environment:
+      # Required
+      TZ: "America/New_York"
+      VC_RESOLVER_BASE_URL: "http://192.168.86.72:8094"
+
+      # Player target
+      CC_HOST: "192.168.86.72"
+      CC_PORT: "5589"   # <- set "8094" if targeting Channels DVR
+
+      # Service/App
+      PORT: "8094"
+      APP_MODULE: "bin.vc_resolver:app"
+
+      # Planner knobs
+      VALID_HOURS: "72"
+      LANES: "40"
+      ALIGN: "30"
+      MIN_GAP_MINS: "30"
+
+      # M3U appearance
+      M3U_GROUP_TITLE: "ESPN+ VC"
+      VC_M3U_PATH: "/app/out/playlist.m3u"
+
+      # Optional (ingest helpers)
+      WATCH_API_KEY: "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"
+
+    restart: unless-stopped
+
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS \"http://127.0.0.1:${PORT:-8094}/health\""]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8094/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

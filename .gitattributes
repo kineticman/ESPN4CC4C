@@ -1,11 +1,4 @@
-# Keep shell scripts LF on checkout (Windows/Git Bash safe)
-*.sh text eol=lf
-
-# PowerShell scripts normalize as text (CRLF or LF OK)
-*.ps1 text
-bootstrap.ps1 text eol=lf
-archive/ export-ignore
-*_backups_*/ export-ignore
-*.bak export-ignore
-*.bak.* export-ignore
-bump_* export-ignore
+*.sh   text eol=lf
+*.py   text eol=lf
+Dockerfile text eol=lf
+*.ps1  text eol=crlf

@@ -1,47 +1,59 @@
-# Generated / runtime
-/out/
-/logs/*
-/data/*.sqlite3*
-*.pyc
-__pycache__/
+# ── Environment ────────────────────────────────────────────────────────────────
+.env
+.env.plan
+.env.backup.*
 
-# Local backups/archives
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# ── Data / Outputs ─────────────────────────────────────────────────────────────
+data/
+out/
+!out/.gitkeep
+logs/
+archive/
+*.sqlite3
+*.sqlite3-journal
+
+# ── Bundles / Build Artifacts ──────────────────────────────────────────────────
+/dist/*.zip
+/dist/*.zip.sha256
+*.tgz
+
+# ── IDE / Editor ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS Junk ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Docker ─────────────────────────────────────────────────────────────────────
+.dockerignore
+
+# ── Local backups / one-off scripts ────────────────────────────────────────────
 *_backups_*/
 *.bak
 *.bak.*
-archive/
-
-# Bundles
-*.tgz
-/dist/*.zip
-/dist/*.zip.sha256
-.env.backup.*
+*.bak_*
 bootstrapbackup.sh
 bootstrap.sh.bak
 bump_to_v3_91.sh
 bump_to_v3_9.sh
 bump_v3_8_safe.sh
 espn4cc4c_mustdo_patch.sh
-.env
-out/
-logs/
-data/
-*.sqlite3
-__pycache__/
-*.pyc
-.DS_Store
-.env
-out/
-logs/
-data/
-*.sqlite3
-__pycache__/
-*.pyc
-.DS_Store
-.venv/
-*.bak_*
+/windowsbootstrap.ps1.bak_*
 /1.py
 /5.sh
-/windowsbootstrap.ps1.bak_*
-out/*
-!out/.gitkeep
+
+docker-compose-backup.yml

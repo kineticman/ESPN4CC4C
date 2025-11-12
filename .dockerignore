@@ -1,21 +1,58 @@
+# Git
 .git
-.venv
-__pycache__/
-*.pyc
-logs/
-out/
-data/
-archive/
-backups/
-releases/
+.gitignore
+.gitattributes
 
-# state/artifacts
-.env.backup.*
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+env/
+
+# Data and outputs (will be mounted as volumes)
 data/
 out/
-__pycache__/
-*.pyc
-*.log
-*.gz
-*.tar
-*.zip
+*.sqlite3
+*.sqlite3-journal
+
+# Environment files
+.env
+.env.*
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.yml
+.dockerignore
+
+# GitHub
+.github/
+
+# Systemd (for non-container deployment)
+contrib/
+
+# Setup scripts (not needed in container)
+setup-*.sh
+setup-*.ps1
+
+# Tests
+tests/
+test_*.py
+*_test.py
