@@ -104,11 +104,11 @@ Use both to verify your guide export matches your plan DB.
 
 ---
 
-## Quick smoke tests (dev server: 192.168.86.72)
+## Quick smoke tests (dev server: 192.0.2.10)
 
 **Bash**
 ```bash
-BASE=http://192.168.86.72:8094
+BASE=http://192.0.2.10:8094
 LANE=6
 curl -s "$BASE/health" | jq .
 curl -s "$BASE/channels" | jq '.[0:3]'
@@ -121,7 +121,7 @@ curl -s "$BASE/deeplink/$LANE"
 
 **PowerShell**
 ```powershell
-$Base = "http://192.168.86.72:8094"
+$Base = "http://192.0.2.10:8094"
 $Lane = 6
 (Invoke-WebRequest "$Base/health" -UseBasicParsing).Content
 (Invoke-WebRequest "$Base/channels" -UseBasicParsing).Content

@@ -39,8 +39,8 @@ services:
 
     environment:
       - TZ=${TZ:-America/New_York}
-      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.168.86.72:8094}
-      - CC_HOST=${CC_HOST:-192.168.86.72}
+      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.0.2.10:8094}
+      - CC_HOST=${CC_HOST:-192.0.2.10}
       - CC_PORT=${CC_PORT:-5589}
       - PORT=${PORT:-8094}
       - APP_MODULE=${APP_MODULE:-bin.vc_resolver:app}

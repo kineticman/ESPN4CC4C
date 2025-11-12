@@ -1,15 +1,15 @@
 services:
   espn4cc4c:
-    # GH: https://github.com/kineticman/ESPN4CC4C
-    # GHCR: https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
+    # 2025.11.12
+    # GitHub home for this project: https://github.com/kineticman/ESPN4CC4C
+    # Docker container home for this project with setup instructions: https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
     image: ghcr.io/kineticman/espn4cc4c:${TAG:-latest}
     container_name: espn4cc4c
-    init: true
-    stop_grace_period: 20s
-
+    dns_search:
+      - ${DOMAIN:-localdomain} # Change to the name of your LAN's domain, which is usually local or localdomain
+      - ${TAILNET} # Change to the name of your Tailnet, which is in the form tailxxxxx.ts.net
     ports:
       - ${PORT:-8094}:${PORT:-8094}
-
     environment:
       - TZ=${TZ:-America/New_York}
       - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.168.86.72:8094}
@@ -24,27 +24,14 @@ services:
       - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
       - VC_M3U_PATH=${VC_M3U_PATH:-/app/out/playlist.m3u}
       - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
-
     volumes:
       - ${HOST_DIR:-.}/data:/app/data
       - ${HOST_DIR:-.}/out:/app/out
       - ${HOST_DIR:-.}/logs:/app/logs
-
-    dns_search:
-      - ${DOMAIN:-localdomain}
-      - ${TAILNET:-tailxxxxx.ts.net}
-
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:${PORT:-8094}/health >/dev/null"]
+      test: ["CMD", "curl", "-f", "http://localhost:8094/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
     restart: unless-stopped
