@@ -45,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Startup script that initializes/refreshes data then starts API
-CMD ["/bin/bash", "-c", "/app/bin/refresh_in_container.sh && exec python3 -m uvicorn bin.vc_resolver:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["/bin/bash", "-c", "/app/bin/cron_boot.sh || true; /app/bin/refresh_in_container.sh && exec python3 -m uvicorn bin.vc_resolver:app --host 0.0.0.0 --port ${PORT}"]
