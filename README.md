@@ -172,7 +172,7 @@ enabled_networks = ESPN,ESPN2,ESPNU,ESPN+
 ### 3) Rebuild the schedule
 ```bash
 # triggers ingest/plan/write (uses the in‑container scripts)
-docker compose exec espn4cc4c bash -lc "/app/cron/refresh_now.sh"
+docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
 ```
 
 ### 4) Confirm the effect quickly
@@ -205,7 +205,7 @@ You should see lane snapshots that reflect your filter changes.
 
 **Manual refresh now**
 ```bash
-docker compose exec espn4cc4c bash -lc "/app/cron/refresh_now.sh"
+docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
 ```
 
 **View logs**
