@@ -1,39 +1,42 @@
 services:
   espn4cc4c:
-    image: ghcr.io/kineticman/espn4cc4c:latest
+    image: ghcr.io/kineticman/espn4cc4c:${TAG:-latest}
     container_name: espn4cc4c
     init: true
     stop_grace_period: 20s
+    user: "${HOST_UID:-}${HOST_UID:+:}${HOST_GID:-}"
 
     ports:
-      - "8094:8094"
+      - ${PORT:-8094}:${PORT:-8094}
 
     environment:
-      TZ: "America/New_York"
-      VC_RESOLVER_BASE_URL: "http://192.168.86.72:8094"
-      CC_HOST: "192.168.86.72"
-      CC_PORT: "5589"
-      PORT: "8094"
-      APP_MODULE: "bin.vc_resolver:app"
-      VALID_HOURS: "72"
-      LANES: "40"
-      ALIGN: "30"
-      MIN_GAP_MINS: "30"
-      M3U_GROUP_TITLE: "ESPN+ VC"
-      VC_M3U_PATH: "/app/out/playlist.m3u"
-      WATCH_API_KEY: "0dbf88e8-cc6d-41da-aa83-18b5c630bc5c"
+      - TZ=${TZ:-America/New_York}
+      # require HOST_IP so we never ship a local default
+      - HOST_IP=${HOST_IP:?set HOST_IP (e.g., 192.168.x.x)}
+      - PORT=${PORT:-8094}
+      - CC_HOST=${CC_HOST:-${HOST_IP}}
+      - CC_PORT=${CC_PORT:-5589}
+      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://${HOST_IP}:${PORT}}
+      - APP_MODULE=${APP_MODULE:-bin.vc_resolver:app}
+      - VALID_HOURS=${VALID_HOURS:-72}
+      - LANES=${LANES:-40}
+      - ALIGN=${ALIGN:-30}
+      - MIN_GAP_MINS=${MIN_GAP_MINS:-30}
+      - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
+      - VC_M3U_PATH=${VC_M3U_PATH:-/app/out/playlist.m3u}
+      - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
 
     volumes:
-      - ./data:/app/data
-      - ./out:/app/out
-      - ./logs:/app/logs
+      - ${HOST_DIR:-.}/data:/app/data
+      - ${HOST_DIR:-.}/out:/app/out
+      - ${HOST_DIR:-.}/logs:/app/logs
 
     dns_search:
-      - "localdomain"
-      - "tailxxxxx.ts.net"
+      - ${DOMAIN:-localdomain}
+      - ${TAILNET:-tailxxxxx.ts.net}
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8094/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${PORT:-8094}/health >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3

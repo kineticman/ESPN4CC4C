@@ -60,3 +60,4 @@ docker-compose-backup.yml
 .env
 .ENV
 docker-compose.override.yml
+.tools/
