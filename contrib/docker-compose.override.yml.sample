@@ -1,0 +1,8 @@
+# Copy to: docker-compose.override.yml (do not commit)
+services:
+  espn4cc4c:
+    ports:
+      - "9094:8094"
+    environment:
+      VC_RESOLVER_BASE_URL: "http://192.168.1.63:8094"
+      CC_HOST: "192.168.1.63"
