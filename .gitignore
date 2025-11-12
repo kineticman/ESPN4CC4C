@@ -57,3 +57,6 @@ espn4cc4c_mustdo_patch.sh
 /5.sh
 
 docker-compose-backup.yml
+.env
+.ENV
+docker-compose.override.yml
