@@ -213,7 +213,13 @@ def best_feed_for_event(
 
 def _get_lane_event_ids(lane: str, at: Optional[str] = None):
     """Resolve the current event for a lane and break its event_id into
-    play_id, airing_id, and network_id from the colon-separated payload.
+    play_id, airing_id, and network_id.
+
+    We now:
+      * Parse play_id and airing_id from the espn-watch payload.
+      * Prefer network_id from the events table (events.network_id) using the
+        full raw event_id as the key.
+      * Fall back to a third colon-part in the payload if present.
 
     Returns a dict with keys:
       lane, at, slot, event_uid_raw, event_uid, play_id, airing_id, network_id.
@@ -241,7 +247,7 @@ def _get_lane_event_ids(lane: str, at: Optional[str] = None):
     except Exception:
         slot = None
 
-    result = {
+    result: Dict[str, Any] = {
         "lane": normalized_lane,
         "at": at_iso,
         "slot": slot,
@@ -258,19 +264,41 @@ def _get_lane_event_ids(lane: str, at: Optional[str] = None):
     eid_raw = slot.get("event_id") or ""
     eid = eid_raw
     if eid.startswith("espn-watch:"):
-        eid = eid[11:]  # strip prefix, keep full payload after namespace
+        # strip namespace prefix, keep payload after it
+        eid = eid[len("espn-watch:") :]
 
-    play_id = None
-    airing_id = None
-    network_id = None
+    play_id: Optional[str] = None
+    airing_id: Optional[str] = None
+    network_id: Optional[str] = None
 
+    # 1) Prefer network_id from the events table using the *raw* event_id
+    if eid_raw:
+        try:
+            with db() as conn2:
+                row = conn2.execute(
+                    "SELECT network_id FROM events WHERE id = ?",
+                    (eid_raw,),
+                ).fetchone()
+                if row is not None:
+                    try:
+                        nid = row["network_id"]
+                    except Exception:
+                        nid = row[0]
+                    if nid:
+                        network_id = str(nid)
+        except Exception:
+            # If anything goes wrong here, we just leave network_id as None
+            pass
+
+    # 2) Parse play_id / airing_id (and optionally network_id) from the payload
     if eid:
         parts = eid.split(":")
         if len(parts) >= 1 and parts[0]:
             play_id = parts[0]
         if len(parts) >= 2 and parts[1]:
             airing_id = parts[1]
-        if len(parts) >= 3 and parts[2]:
+        # If DB lookup failed to give us a network_id, fall back to third part
+        if len(parts) >= 3 and parts[2] and not network_id:
             network_id = parts[2]
 
     result["event_uid_raw"] = eid_raw
@@ -279,7 +307,6 @@ def _get_lane_event_ids(lane: str, at: Optional[str] = None):
     result["airing_id"] = airing_id
     result["network_id"] = network_id
     return result
-
 
 def _build_showwatchstream_variant(ids: dict, variant: int) -> str:
     """Build one of the test showWatchStream URLs.
