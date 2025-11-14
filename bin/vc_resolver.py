@@ -208,6 +208,123 @@ def best_feed_for_event(
     return None
 
 
+
+
+
+def _get_lane_event_ids(lane: str, at: Optional[str] = None):
+    """Resolve the current event for a lane and break its event_id into
+    play_id, airing_id, and network_id from the colon-separated payload.
+
+    Returns a dict with keys:
+      lane, at, slot, event_uid_raw, event_uid, play_id, airing_id, network_id.
+    """
+    at_iso = parse_at(at or None)
+
+    lane_str = str(lane).strip()
+    if lane_str.lower().startswith("eplus") and lane_str[5:].isdigit():
+        num = int(lane_str[5:])
+    elif lane_str.isdigit():
+        num = int(lane_str)
+    else:
+        num = None
+
+    normalized_lane = num if num is not None else lane_str
+    candidates = [f"eplus{num}", str(num)] if num is not None else [lane_str]
+
+    slot = None
+    try:
+        with db() as conn:
+            for cand in candidates:
+                slot = current_slot(conn, cand, at_iso)
+                if slot:
+                    break
+    except Exception:
+        slot = None
+
+    result = {
+        "lane": normalized_lane,
+        "at": at_iso,
+        "slot": slot,
+        "event_uid_raw": None,
+        "event_uid": None,
+        "play_id": None,
+        "airing_id": None,
+        "network_id": None,
+    }
+
+    if not slot or slot.get("kind") != "event" or not slot.get("event_id"):
+        return result
+
+    eid_raw = slot.get("event_id") or ""
+    eid = eid_raw
+    if eid.startswith("espn-watch:"):
+        eid = eid[11:]  # strip prefix, keep full payload after namespace
+
+    play_id = None
+    airing_id = None
+    network_id = None
+
+    if eid:
+        parts = eid.split(":")
+        if len(parts) >= 1 and parts[0]:
+            play_id = parts[0]
+        if len(parts) >= 2 and parts[1]:
+            airing_id = parts[1]
+        if len(parts) >= 3 and parts[2]:
+            network_id = parts[2]
+
+    result["event_uid_raw"] = eid_raw
+    result["event_uid"] = eid
+    result["play_id"] = play_id
+    result["airing_id"] = airing_id
+    result["network_id"] = network_id
+    return result
+
+
+def _build_showwatchstream_variant(ids: dict, variant: int) -> str:
+    """Build one of the test showWatchStream URLs.
+
+    Variants:
+      1 -> playID only
+      2 -> playID + networkId
+      3 -> playID + airingId
+      4 -> playID + airingId + networkId
+
+    Raises ValueError if required IDs are missing.
+    """
+    play_id = ids.get("play_id")
+    airing_id = ids.get("airing_id")
+    network_id = ids.get("network_id")
+
+    if not play_id:
+        raise ValueError("play_id is required")
+
+    base = "sportscenter://x-callback-url/showWatchStream"
+    params = [f"playID={play_id}"]
+
+    if variant == 1:
+        # playID only
+        pass
+    elif variant == 2:
+        # playID + networkId
+        if not network_id:
+            raise ValueError("network_id is required for variant 2")
+        params.append(f"networkId={network_id}")
+    elif variant == 3:
+        # playID + airingId
+        if not airing_id:
+            raise ValueError("airing_id is required for variant 3")
+        params.append(f"airingId={airing_id}")
+    elif variant == 4:
+        # playID + airingId + networkId
+        if not airing_id or not network_id:
+            raise ValueError("airing_id and network_id are required for variant 4")
+        params.append(f"airingId={airing_id}")
+        params.append(f"networkId={network_id}")
+    else:
+        raise ValueError(f"Unsupported variant: {variant}")
+
+    return f"{base}?{'&'.join(params)}"
 # --- Health ---
 @app.get("/health")
 def health():
@@ -443,6 +560,128 @@ def deeplink_lane(lane: str, at: Optional[str] = None):
 
 
 # --- whatson with deeplink support ---
+
+
+
+@app.get(
+    "/api/test/{lane}",
+    response_class=JSONResponse,
+    tags=["vc"],
+    summary="Deeplink test variants for a lane",
+)
+def deeplink_test_all(
+    lane: str,
+    at: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    """Return showWatchStream deeplink variants for the current event on a lane.
+
+    JSON (default):
+      GET /api/test/4
+        -> {
+             "lane": 4,
+             "ids": {"play_id": "...", "airing_id": "...", "network_id": "..."},
+             "deeplinks": {
+               "1": "sportscenter://...",
+               "2": "sportscenter://...",
+               "3": "...",
+               "4": "..."
+             }
+           }
+
+    TXT:
+      GET /api/test/4?format=txt
+        -> plain text list of variants, one per line:
+           1: sportscenter://...
+           2: sportscenter://...
+           ...
+    """
+    info = _get_lane_event_ids(lane, at)
+    ids = {
+        "play_id": info.get("play_id"),
+        "airing_id": info.get("airing_id"),
+        "network_id": info.get("network_id"),
+    }
+
+    if not ids["play_id"]:
+        return JSONResponse(
+            {
+                "ok": False,
+                "lane": info.get("lane"),
+                "at": info.get("at"),
+                "error": "No event or play_id available for this lane at this time.",
+            },
+            status_code=404,
+        )
+
+    deeplinks: dict[str, str] = {}
+    for variant in (1, 2, 3, 4):
+        try:
+            url = _build_showwatchstream_variant(ids, variant)
+            deeplinks[str(variant)] = url
+        except ValueError:
+            # Skip variants we can't build due to missing IDs
+            continue
+
+    fmt = (format or "").lower()
+    if fmt == "txt":
+        # Return a simple text list, perfect for copy/paste into adb
+        lines_out = [f"{k}: {v}" for k, v in sorted(deeplinks.items())]
+        body = "\n".join(lines_out)
+        return PlainTextResponse(body, status_code=200)
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "lane": info.get("lane"),
+            "at": info.get("at"),
+            "slot": info.get("slot"),
+            "ids": {
+                "event_uid_raw": info.get("event_uid_raw"),
+                "event_uid": info.get("event_uid"),
+                **ids,
+            },
+            "deeplinks": deeplinks,
+        },
+        status_code=200,
+    )
+
+
+@app.get(
+    "/api/test/{lane}/format/{variant}",
+    response_class=PlainTextResponse,
+    tags=["vc"],
+    summary="Single deeplink test URL for a lane",
+)
+def deeplink_test_single(lane: str, variant: int, at: Optional[str] = None):
+    """Return a single sportscenter:// showWatchStream URL as text/plain for adb testing.
+
+    Examples:
+      GET /api/test/4/format/1  -> playID only
+      GET /api/test/4/format/2  -> playID + networkId
+      GET /api/test/4/format/3  -> playID + airingId
+      GET /api/test/4/format/4  -> playID + airingId + networkId
+    """
+    if variant not in (1, 2, 3, 4):
+        return PlainTextResponse("", status_code=400)
+
+    info = _get_lane_event_ids(lane, at)
+    ids = {
+        "play_id": info.get("play_id"),
+        "airing_id": info.get("airing_id"),
+        "network_id": info.get("network_id"),
+    }
+
+    if not ids["play_id"]:
+        return PlainTextResponse("", status_code=204)
+
+    try:
+        url = _build_showwatchstream_variant(ids, variant)
+    except ValueError:
+        # Required IDs missing for this variant
+        return PlainTextResponse("", status_code=204)
+
+    return PlainTextResponse(url, status_code=200)
 @app.get("/whatson/{lane}", response_class=JSONResponse)
 def whatson(
     lane: str,
