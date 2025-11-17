@@ -38,7 +38,7 @@ exclude_sports =
 #   exclude_leagues = College
 #   enabled_leagues = NCAA  # Matches any league with "NCAA" in name
 enabled_leagues = *
-exclude_leagues = Women's,NCAAW
+exclude_leagues =
 
 # ============================================================================
 # PACKAGE FILTERING (ESPN+ subscription requirements)

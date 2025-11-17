@@ -75,6 +75,19 @@ def get_filter_options(db_path: str) -> dict:
     )
     options["packages"] = cursor.fetchall()
 
+    # Re-Air analysis
+    cursor.execute(
+        """
+        SELECT 
+            CASE WHEN is_reair = 1 THEN 'Re-Air' ELSE 'Regular' END as type,
+            COUNT(*) as cnt
+        FROM events
+        GROUP BY is_reair
+        ORDER BY is_reair
+    """
+    )
+    options["reair"] = cursor.fetchall()
+
     conn.close()
     return options
 
@@ -111,6 +124,11 @@ def print_options(options: dict):
         # Parse and show cleaner
         pkg_clean = pkg.replace('["', "").replace('"]', "").replace('", "', ", ")
         print(f"  {pkg_clean:<50} ({count:>4} events)")
+
+    print("\n🔁 RE-AIR EVENTS:")
+    print("-" * 80)
+    for rtype, count in options["reair"]:
+        print(f"  {rtype:<30} ({count:>4} events)")
 
     print("\n" + "=" * 80)
     print("💡 TIP: Use these exact names in your filters.ini file")
@@ -186,6 +204,17 @@ exclude_leagues =
 #   exclude_ppv = true              # Exclude PPV events
 require_espn_plus =
 exclude_ppv = false
+
+# ============================================================================
+# RE-AIR EVENT FILTERING
+# ============================================================================
+# Re-Air events are replays that may have authentication issues on some devices.
+# Set to true to exclude Re-Air events (recommended for Android/Fire TV users).
+#
+# Examples:
+#   exclude_reair = true            # Only show live/first-run content
+#   exclude_reair = false           # Include re-airs (default)
+exclude_reair = false
 
 # ============================================================================
 # EVENT TYPE FILTERING

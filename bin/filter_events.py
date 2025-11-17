@@ -34,6 +34,7 @@ class EventFilter:
                 "exclude_leagues": "",
                 "require_espn_plus": "",
                 "exclude_ppv": "false",
+                "exclude_reair": "false",
                 "enabled_event_types": "*",
                 "exclude_event_types": "",
                 "enabled_languages": "*",
@@ -77,6 +78,9 @@ class EventFilter:
         # Parse ESPN+ / PPV filters
         self.require_espn_plus = self._parse_bool(f.get("require_espn_plus", ""))
         self.exclude_ppv = f.get("exclude_ppv", "false").lower() == "true"
+
+        # Parse Re-Air filter
+        self.exclude_reair = f.get("exclude_reair", "false").lower() == "true"
 
         # Parse studio show / non-sport filter
         self.exclude_no_sport = f.get("exclude_no_sport", "false").lower() == "true"
@@ -236,6 +240,12 @@ class EventFilter:
         if self.exclude_ppv and packages_info["is_ppv"]:
             return False
 
+        # Check Re-Air exclusion
+        if self.exclude_reair:
+            is_reair = event.get("is_reair")
+            if is_reair == 1 or is_reair is True:
+                return False
+
         # Exclude events with no sport (studio shows, talk shows, news programs)
         # These typically don't have valid ESPN deeplinks
         if self.exclude_no_sport:
@@ -287,6 +297,9 @@ class EventFilter:
         if self.exclude_ppv:
             lines.append(f"  Exclude PPV: {self.exclude_ppv}")
 
+        if self.exclude_reair:
+            lines.append("  Exclude Re-Air Events: True")
+
         if self.exclude_no_sport:
             lines.append("  Exclude Non-Sport Content: True (studio shows, news)")
 
@@ -313,7 +326,8 @@ def filter_events_from_db(conn, filter_config: EventFilter) -> List[str]:
     cursor.execute(
         """
         SELECT id, network, network_short, sport, sport_abbr,
-               league_name, league_abbr, packages, event_type, language
+               league_name, league_abbr, packages, event_type, language,
+               is_reair
         FROM events
     """
     )
@@ -334,6 +348,7 @@ def filter_events_from_db(conn, filter_config: EventFilter) -> List[str]:
             "packages": row[7],
             "event_type": row[8],
             "language": row[9],
+            "is_reair": row[10],
         }
 
         if filter_config.should_include(event):

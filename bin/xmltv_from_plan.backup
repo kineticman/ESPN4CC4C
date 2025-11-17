@@ -56,8 +56,6 @@ class ProgrammeRow:
     event_type: Optional[str]
     language: Optional[str]
     is_reair: Optional[int]
-    content_kind: Optional[str]
-
 
 
 def get_latest_plan_id(conn: sqlite3.Connection) -> int:
@@ -115,8 +113,7 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
         e.packages             AS packages,
         e.event_type           AS event_type,
         e.language             AS language,
-        e.is_reair             AS is_reair,
-        e.content_kind         AS content_kind
+        e.is_reair             AS is_reair
     FROM plan_slot ps
     LEFT JOIN events e ON e.id = ps.event_id
     WHERE ps.plan_id = ?
@@ -147,7 +144,6 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
                 event_type=r["event_type"],
                 language=r["language"],
                 is_reair=r["is_reair"],
-                content_kind=r["content_kind"],
             )
         )
     return programmes
@@ -309,39 +305,23 @@ def build_programme_elements(
                 desc_el.text = desc_text
             # --- END FIX ---
 
-            # Categories – driven by content_kind, tidy and *deduped*.
+            # Categories – keep these tidy and *deduped*.
+            cats_raw: List[str] = [
+                "Sports",
+                p.sport,
+                p.league_name,
+                p.network,
+            ]
+
             live = is_live_event(p)
-            kind = (getattr(p, "content_kind", None) or "").strip().lower()
+            if live:
+                # Only add the "live" tags when this is *not* a replay.
+                # We use the XMLTV <live> element instead of a "Live" category.
+                cats_raw.append("Sports Event")
 
-            cats_raw: List[str] = []
+            cats_raw.append("ESPNCC4C")
+            cats = uniq(cats_raw)
 
-            if kind == "sports_event":
-                # True competitions (games, duals, invitationals, etc.)
-                cats_raw.extend([
-                    "Sports",
-                    p.sport,
-                    p.league_name,
-                    "Sports Event",
-                ])
-            elif kind == "sports_show":
-                # Studio / talk / recap shows that are still sports-related.
-                cats_raw.extend([
-                    "Sports",
-                    p.sport,
-                    p.league_name,
-                    "Sports Talk",
-                ])
-            else:
-                # Non-sports or ambiguous content: tag by network only.
-                if p.network:
-                    cats_raw.append(p.network)
-
-            # Tag everything non-placeholder with the project marker.
-            cats_raw.append("ESPN4CC4C")
-
-            # If you decide later you *do* want network visible on events/shows,
-            # you could tack `p.network` on above in those branches.
-            cats = [c for c in uniq(cats_raw) if c]
             # Icon / artwork
             if p.image:
                 ET.SubElement(prog_el, "icon", src=p.image)

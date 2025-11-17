@@ -1,0 +1,178 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║              ESPN4CC4C STICKY LANES & FILTER CHANGES                         ║
+║                        Quick Reference Card                                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─ THE PROBLEM ────────────────────────────────────────────────────────────────┐
+│ Changed filters but events still showing up? That's the sticky lane system! │
+│ It keeps events on the same channels for continuity (~6 hours).             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ SOLUTION #1: QUICK REPLAN (Recommended) ────────────────────────────────────┐
+│                                                                              │
+│ Use --force-replan flag after changing filters:                             │
+│                                                                              │
+│   $ python3 bin/build_plan.py --db data/db.sqlite3 \                        │
+│       --valid-hours 72 --force-replan                                       │
+│                                                                              │
+│ ✓ Quick (one command)                                                       │
+│ ✓ Safe (temporary override)                                                 │
+│ ✓ Filters apply immediately                                                 │
+│ ✓ Next refresh returns to normal sticky behavior                            │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ SOLUTION #2: NUCLEAR CLEAR (Complete Reset) ────────────────────────────────┐
+│                                                                              │
+│ Use clear_sticky.py for complete fresh start:                               │
+│                                                                              │
+│   # Preview what will be cleared                                            │
+│   $ python3 bin/clear_sticky.py --db data/db.sqlite3 --dry-run              │
+│                                                                              │
+│   # Actually clear sticky assignments                                       │
+│   $ python3 bin/clear_sticky.py --db data/db.sqlite3                        │
+│                                                                              │
+│   # Rebuild plan from scratch                                               │
+│   $ python3 bin/build_plan.py --db data/db.sqlite3 --valid-hours 72         │
+│                                                                              │
+│ ✓ Complete reset                                                            │
+│ ✓ Good for major filter changes                                             │
+│ ✓ Safe (just clears cache)                                                  │
+│ ✓ Sticky system rebuilds from scratch                                       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ WHEN TO USE WHICH ──────────────────────────────────────────────────────────┐
+│                                                                              │
+│ Use --force-replan when:                                                    │
+│   • Changed one or two filter settings                                      │
+│   • Want quick results                                                      │
+│   • Making temporary test changes                                           │
+│                                                                              │
+│ Use clear_sticky.py when:                                                   │
+│   • Making major filter overhaul                                            │
+│   • Want complete reorganization                                            │
+│   • Troubleshooting assignment issues                                       │
+│   • Starting fresh after testing                                            │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ COMMON SCENARIOS ───────────────────────────────────────────────────────────┐
+│                                                                              │
+│ Scenario: Enabled "exclude_reair = true"                                    │
+│   $ nano filters.ini                                                        │
+│   $ python3 bin/build_plan.py --db data/db.sqlite3 --force-replan           │
+│                                                                              │
+│ Scenario: Changed multiple filter settings                                  │
+│   $ nano filters.ini                                                        │
+│   $ python3 bin/clear_sticky.py --db data/db.sqlite3                        │
+│   $ python3 bin/build_plan.py --db data/db.sqlite3                          │
+│                                                                              │
+│ Scenario: Testing different filters                                         │
+│   $ nano filters.ini     # Test config #1                                   │
+│   $ python3 bin/build_plan.py --db data/db.sqlite3 --force-replan           │
+│   $ nano filters.ini     # Test config #2                                   │
+│   $ python3 bin/build_plan.py --db data/db.sqlite3 --force-replan           │
+│   # Once happy, run normally (no flag)                                      │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ WHAT STICKY LANES DO ───────────────────────────────────────────────────────┐
+│                                                                              │
+│ The event_lane table tracks event → channel assignments:                    │
+│                                                                              │
+│   event_lane                                                                │
+│   ├─ event_id: "espn-watch:12345..."                                        │
+│   ├─ channel_id: 5                                                          │
+│   ├─ pinned_at_utc: timestamp                                               │
+│   └─ last_seen_utc: timestamp                                               │
+│                                                                              │
+│ On refresh, build_plan tries to keep events on same channels.               │
+│ This provides consistency and avoids "channel shuffling".                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ HOW --force-replan WORKS ───────────────────────────────────────────────────┐
+│                                                                              │
+│ Normal refresh:                                                             │
+│   1. Load filters                                                           │
+│   2. Load events passing filters                                            │
+│   3. Load sticky map from event_lane ← keeps old assignments                │
+│   4. Assign events (respecting sticky)                                      │
+│                                                                              │
+│ With --force-replan:                                                        │
+│   1. Load filters                                                           │
+│   2. Load events passing filters                                            │
+│   3. Skip sticky map (empty) ← ignores old assignments                      │
+│   4. Assign events fresh                                                    │
+│                                                                              │
+│ Result: Filters apply immediately, all events get new channel assignments.  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ HOW clear_sticky.py WORKS ──────────────────────────────────────────────────┐
+│                                                                              │
+│ What it does:                                                               │
+│   DELETE FROM event_lane;                                                   │
+│                                                                              │
+│ That's it! Simple but effective.                                            │
+│                                                                              │
+│ After clearing:                                                             │
+│   • Next build_plan starts with empty sticky map                            │
+│   • All events assigned fresh                                               │
+│   • New assignments saved to event_lane                                     │
+│   • Sticky system rebuilds naturally over time                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TROUBLESHOOTING ────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ Q: Used --force-replan but filters still not working?                       │
+│ A: Check filters.ini syntax:                                                │
+│    $ python3 bin/filter_events.py data/db.sqlite3 filters.ini               │
+│                                                                              │
+│ Q: Channels shuffle on every refresh?                                       │
+│ A: Stop using --force-replan! Only use it once after filter changes.        │
+│                                                                              │
+│ Q: Want to see current sticky assignments?                                  │
+│ A: $ sqlite3 data/db.sqlite3 "SELECT * FROM event_lane LIMIT 20"            │
+│                                                                              │
+│ Q: Can I automate --force-replan?                                           │
+│ A: Yes! Use it in scripts after filter updates. But don't use every time.   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ BEST PRACTICES ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ✓ Preview with --dry-run before using clear_sticky.py                       │
+│ ✓ Use --force-replan for single filter changes                              │
+│ ✓ Use clear_sticky.py for major reorganizations                             │
+│ ✓ Schedule major changes during low-traffic times                           │
+│ ✓ Test filter changes in dev environment first                              │
+│ ✓ Document why assignments changed (for your team)                          │
+│ ✗ Don't use --force-replan on every refresh                                 │
+│ ✗ Don't clear sticky unnecessarily                                          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ DECISION TREE ──────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ Changed filters?                                                            │
+│   └─ Yes → Did you change 1-2 settings?                                     │
+│       ├─ Yes → Use --force-replan                                           │
+│       └─ No (major changes) → Use clear_sticky.py                           │
+│                                                                              │
+│ Want to reorganize channels?                                                │
+│   └─ Use clear_sticky.py                                                    │
+│                                                                              │
+│ Normal refresh (no changes)?                                                │
+│   └─ No flags needed! Just run build_plan.py normally                       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  💡 TIP: After changing filters, use --force-replan once. Next refresh      ║
+║      runs normally and maintains the new filtered content with stickiness!  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+For detailed guide, see: FILTER_CHANGES_GUIDE.md

@@ -5,7 +5,7 @@ services:
     # Docker container home for this project with setup instructions:
     #   https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
     build: .
-    image: ghcr.io/kineticman/espn4cc4c:${TAG:-latest}
+    image: ghcr.io/kineticman/espn4cc4c:${TAG:-beta-isreair}
     container_name: espn4cc4c
     dns_search:
       - ${DOMAIN:-localdomain} # Change to the name of your LAN's domain, usually local or localdomain
