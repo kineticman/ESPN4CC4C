@@ -2,22 +2,30 @@
 
 Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all in one Docker service.
 
-> **Baseline:** v5.1.x (2025‑11‑12) — prebuilt image with cron & tzdata; default onboarding = clone → `docker compose up`.
+> **Baseline:** v5.1.x (2025‑11‑12+) — prebuilt image with cron & tzdata; default onboarding = clone → `docker compose up`.
 
 ---
 
-## 🆕 What’s new (v5.1.x)
+## 🆕 What’s new (v5.1.x+)
+
 - **Compose‑only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
 - **Built‑in cron**: auto refresh at **08:05 / 14:05 / 20:05**; weekly **VACUUM** Sun **03:10**.
 - **Safer compose**: init‑enabled, graceful stop, `${PORT}`‑aware healthcheck, and log rotation.
 - **Filtering workflow**: simple `filters.ini` + `/whatson` views to confirm results fast.
-- **API polish**: lane‑aware `/whatson_all`, `/whatson/{lane}` (JSON/TXT) and `/deeplink/{lane}` for ADBTuner‑style launchers.
+- **Improved XMLTV**:
+  - Adds an internal `content_kind` classifier (`sports_event` vs `sports_show` vs `other`) based on ESPN Watch Graph structure.
+  - Exposes that to Channels as richer categories (e.g., **Sports** vs **Sports Talk**) and adds an **ESPN4CC4C** category tag for both sports and non‑sports events (not placeholders).
+- **Experimental extra M3U for Channels‑4‑Chrome**:
+  - Still writes the original Channels‑friendly M3U: `/out/playlist.m3u`.
+  - Also writes `/out/playlist.ch4c.m3u` using plain `http://` URLs, controlled by `CH4C_HOST` / `CH4C_PORT` env vars.
+  - Lets you point CH4C at the `.ch4c.m3u` while leaving Channels DVR on the standard M3U.
 
 > Standing rules: **GET‑only** for checks (no HEAD), **never** use proxies for ESPN endpoints.
 
 ---
 
 ## 🚀 Quick Start (Portainer — easiest)
+
 This is the recommended flow for Channels users.
 
 1) **Open Portainer → Stacks → Add Stack**
@@ -42,6 +50,9 @@ services:
       - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.0.2.10:8094}
       - CC_HOST=${CC_HOST:-192.0.2.10}
       - CC_PORT=${CC_PORT:-5589}
+      # Optional: Channels‑4‑Chrome (CH4C) bridge for http:// playlists
+      - CH4C_HOST=${CH4C_HOST:-127.0.0.1}
+      - CH4C_PORT=${CH4C_PORT:-2442}
       - PORT=${PORT:-8094}
       - APP_MODULE=${APP_MODULE:-bin.vc_resolver:app}
       - VALID_HOURS=${VALID_HOURS:-72}
@@ -83,15 +94,17 @@ services:
 - `VC_RESOLVER_BASE_URL=http://<YOUR-IP>:8094`
 - `CC_HOST=<YOUR-IP>`
 - *(optional)* `HOST_DIR=/data/espn4cc4c` to store DB/out/logs under a specific host path
+- *(optional)* `CH4C_HOST` / `CH4C_PORT` if CH4C lives somewhere other than `127.0.0.1:2442`
 
 5) **Deploy the stack**
 
 6) **Sanity checks (browser or curl)**
-```
-http://<YOUR-IP>:8094/health            → {"ok": true}
-http://<YOUR-IP>:8094/out/epg.xml       → XMLTV guide
-http://<YOUR-IP>:8094/playlist.m3u      → M3U with eplus1–eplus40
-http://<YOUR-IP>:8094/whatson_all       → quick view of all lanes
+```text
+http://<YOUR-IP>:8094/health             → {"ok": true}
+http://<YOUR-IP>:8094/out/epg.xml        → XMLTV guide
+http://<YOUR-IP>:8094/playlist.m3u       → M3U with eplus1–eplus40 (Channels)
+http://<YOUR-IP>:8094/playlist.ch4c.m3u  → experimental M3U for CH4C
+http://<YOUR-IP>:8094/whatson_all        → quick view of all lanes
 ```
 
 ---
@@ -105,6 +118,7 @@ cd ESPN4CC4C
 
 # 2) (optional) adjust PORT/paths/IPs inside docker-compose.yml
 #    set VC_RESOLVER_BASE_URL and CC_HOST to your host IP
+#    optionally set CH4C_HOST / CH4C_PORT if using Channels-4-Chrome
 
 # 3) bring it up
 mkdir -p data out logs
@@ -118,17 +132,21 @@ curl -fsS "http://<YOUR-IP>:8094/out/playlist.m3u" | head -n 20
 ---
 
 ## ➕ Add to Channels DVR
+
 - **XMLTV:** `http://<YOUR-IP>:8094/out/epg.xml`
-- **M3U:**   `http://<YOUR-IP>:8094/playlist.m3u`
+- **M3U (Channels DVR):** `http://<YOUR-IP>:8094/playlist.m3u`
+- **M3U (CH4C, experimental):** `http://<YOUR-IP>:8094/out/playlist.ch4c.m3u` (for Channels‑4‑Chrome or other http‑only launchers)
 
 You’ll see **ESPN+ EPlus 1…40** with guide data.
 
 ---
 
 ## 🎛️ Editing Filters (keep only what you care about)
-`filters.ini` lets you whitelist/blacklist by network, sport, league, event type, and platform.
+
+`filters.ini` lets you whitelist/blacklist by network, sport, league, event type, platform, and (internally) the `content_kind` that powers Sports vs Sports Talk categories.
 
 ### 1) Generate a starter `filters.ini`
+
 *(works best after first refresh so counts are meaningful)*
 
 **Inside the container**
@@ -142,6 +160,7 @@ python3 bin/generate_filter_options.py ./data/eplus_vc.sqlite3 --generate-config
 ```
 
 ### 2) Edit `filters.ini`
+
 Examples:
 
 **ESPN+ only, no replays**
@@ -170,18 +189,22 @@ enabled_networks = ESPN,ESPN2,ESPNU,ESPN+
 ```
 
 ### 3) Rebuild the schedule
+
 ```bash
 # triggers ingest/plan/write (uses the in‑container scripts)
 docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
 ```
 
 ### 4) Confirm the effect quickly
-```
+
+```text
 GET http://<YOUR-IP>:8094/whatson_all?format=txt
 ```
+
 You should see lane snapshots that reflect your filter changes.
 
 **Reference keys**
+
 - `enabled_networks`, `exclude_networks`
 - `enabled_sports`, `exclude_sports`
 - `enabled_leagues`, `exclude_leagues`
@@ -193,32 +216,40 @@ You should see lane snapshots that reflect your filter changes.
 ---
 
 ## 🔎 API Cheat‑Sheet
+
 - `GET /health` → service OK
 - `GET /whatson_all?format=json|txt` → all lanes at a glance
 - `GET /whatson/{lane}?format=json|txt` → a single lane
-- `GET /deeplink/{lane}` → when available, returns a `sportscenter://…` URL (handy for ADBTuner)
-- Outputs for Channels: `GET /out/epg.xml`, `GET /out/playlist.m3u`
+- `GET /deeplink/{lane}` → when available, returns a `sportscenter://…` URL (handy for ADBTuner / deep‑link launchers)
+- Outputs for Channels:
+  - `GET /out/epg.xml` → XMLTV
+  - `GET /out/playlist.m3u` → standard M3U (Channels DVR)
+  - `GET /out/playlist.ch4c.m3u` → experimental M3U (CH4C/http‑only)
 
 ---
 
 ## 🧰 Operations
 
 **Manual refresh now**
+
 ```bash
 docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
 ```
 
 **View logs**
+
 ```bash
 docker compose logs -f --tail=200
 ```
 
 **First‑run note**
+
 If you see `logs/cron_refresh.log` missing, it’s normal before the first cron or manual refresh. Run the command above once and re‑check.
 
 ---
 
 ## 🆘 Troubleshooting
+
 - **Health fails**: ensure Docker is running and your chosen `PORT` is free.
 - **Nothing in M3U/XML**: check `/whatson_all`; review filters; run a manual refresh.
 - **Hostname doesn’t resolve**: use IPs or ensure your LAN/Tailscale DNS resolves hostnames; `dns_search` alone doesn’t create DNS.
@@ -227,13 +258,15 @@ If you see `logs/cron_refresh.log` missing, it’s normal before the first cron 
 ---
 
 ## Security & Policies
+
 - No proxies for ESPN endpoints.
-- GET‑only for checks (no HEAD requests).
+- GET‑only for checks (avoid HEAD).
 - Don’t expose the service publicly; it’s designed for trusted LAN use.
 
 ---
 
 ## Credits & Links
+
 - GitHub: https://github.com/kineticman/ESPN4CC4C
 - GHCR image: https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
 - Channels DVR: https://getchannels.com/
