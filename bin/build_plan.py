@@ -103,6 +103,11 @@ def parse_args() -> argparse.Namespace:
         default=CFG_LANES,
         help="seed this many lanes if channel table empty",
     )
+    ap.add_argument(
+        "--force-replan",
+        action="store_true",
+        help="ignore sticky lanes and force fresh planning (use after filter changes)",
+    )
     return ap.parse_args()
 
 
@@ -641,8 +646,16 @@ def main() -> None:
     )
 
     # Sticky lanes: seed from latest plan (one-time) and load map
-    seeded_sticky = _seed_event_lane_from_latest_plan(conn)
-    sticky_map = _load_event_lane_map(conn)
+    # UNLESS --force-replan is used (for filter changes)
+    sticky_map = {}
+    if args.force_replan:
+        jlog(
+            event="force_replan_enabled",
+            message="Ignoring sticky lanes - forcing fresh plan",
+        )
+    else:
+        seeded_sticky = _seed_event_lane_from_latest_plan(conn)
+        sticky_map = _load_event_lane_map(conn)
 
     jlog(
         event="plan_build_start",

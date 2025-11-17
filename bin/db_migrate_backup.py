@@ -399,9 +399,6 @@ def migrate_filter_columns(cur):
         "simulcast_airing_id": "TEXT",
         "language": "TEXT",
         "is_reair": "INTEGER",
-        "content_kind": "TEXT",
-        "category_name": "TEXT",
-        "subcategory_name": "TEXT",
     }
 
     # Check which columns are missing

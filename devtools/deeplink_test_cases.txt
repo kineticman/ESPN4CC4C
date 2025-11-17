@@ -1,0 +1,1272 @@
+=== ESPN4CC4C Deeplink Testing Script ===
+Generated: Thu Nov 13 09:08:02 PM EST 2025
+Filter: Network = ACCN
+Limit: 20 events
+
+Fetching sample events from database...
+Filter: e.network = 'ACCN'
+
+
+========================================
+Event: California vs. #15 Louisville
+Network: ACCN (ID: acc)
+Status: LIVE
+PlayID: 3d2c6f94-8724-4058-a9b0-7cc046db9f04
+AiringID: 
+SimulcastAiringID: 1301561767
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561767"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561767&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04&airingId=1301561767"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04&airingId=1301561767&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301561767&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04&airingId=1301561767"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561767"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301561767"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561767&playID=3d2c6f94-8724-4058-a9b0-7cc046db9f04"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301561767"
+
+---
+
+
+========================================
+Event: Florida St vs. Clemson
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 406292fc-e943-4dc7-b034-980ed45e4f21
+AiringID: 
+SimulcastAiringID: 1301561680
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=406292fc-e943-4dc7-b034-980ed45e4f21"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=406292fc-e943-4dc7-b034-980ed45e4f21&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561680"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561680&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=406292fc-e943-4dc7-b034-980ed45e4f21&airingId=1301561680"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=406292fc-e943-4dc7-b034-980ed45e4f21&airingId=1301561680&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301561680&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=406292fc-e943-4dc7-b034-980ed45e4f21"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=406292fc-e943-4dc7-b034-980ed45e4f21&airingId=1301561680"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=406292fc-e943-4dc7-b034-980ed45e4f21"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561680"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301561680"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561680&playID=406292fc-e943-4dc7-b034-980ed45e4f21"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301561680"
+
+---
+
+
+========================================
+Event: ACC Huddle Final Score
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569
+AiringID: 
+SimulcastAiringID: 1301348542
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301348542"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301348542&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569&airingId=1301348542"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569&airingId=1301348542&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301348542&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569&airingId=1301348542"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301348542"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301348542"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301348542&playID=bd5c5ccc-f88a-4bcb-a9e7-4b22b2014569"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301348542"
+
+---
+
+
+========================================
+Event: ACC Network Football Podcast
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 56362f67-3cb5-4d37-abe0-d6624da947b6
+AiringID: 
+SimulcastAiringID: 1301338964
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=56362f67-3cb5-4d37-abe0-d6624da947b6"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=56362f67-3cb5-4d37-abe0-d6624da947b6&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338964"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338964&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=56362f67-3cb5-4d37-abe0-d6624da947b6&airingId=1301338964"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=56362f67-3cb5-4d37-abe0-d6624da947b6&airingId=1301338964&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301338964&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=56362f67-3cb5-4d37-abe0-d6624da947b6"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=56362f67-3cb5-4d37-abe0-d6624da947b6&airingId=1301338964"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=56362f67-3cb5-4d37-abe0-d6624da947b6"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338964"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301338964"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338964&playID=56362f67-3cb5-4d37-abe0-d6624da947b6"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301338964"
+
+---
+
+
+========================================
+Event: ACC PM
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 36e27e53-a7bb-4673-b98b-c5c5c92841cf
+AiringID: 
+SimulcastAiringID: 1300615344
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300615344"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300615344&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf&airingId=1300615344"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf&airingId=1300615344&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1300615344&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf&airingId=1300615344"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300615344"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1300615344"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300615344&playID=36e27e53-a7bb-4673-b98b-c5c5c92841cf"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1300615344"
+
+---
+
+
+========================================
+Event: Stetson vs. Miami
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: df363027-8609-4873-a86c-d66eafb03660
+AiringID: 
+SimulcastAiringID: 1300371276
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=df363027-8609-4873-a86c-d66eafb03660"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=df363027-8609-4873-a86c-d66eafb03660&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300371276"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300371276&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=df363027-8609-4873-a86c-d66eafb03660&airingId=1300371276"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=df363027-8609-4873-a86c-d66eafb03660&airingId=1300371276&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1300371276&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=df363027-8609-4873-a86c-d66eafb03660"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=df363027-8609-4873-a86c-d66eafb03660&airingId=1300371276"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=df363027-8609-4873-a86c-d66eafb03660"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300371276"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1300371276"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300371276&playID=df363027-8609-4873-a86c-d66eafb03660"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1300371276"
+
+---
+
+
+========================================
+Event: SE Louisiana vs. Georgia Tech
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 18802289-ade6-4e8d-91a0-30b2b58f69a0
+AiringID: 
+SimulcastAiringID: 1300371374
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300371374"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300371374&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0&airingId=1300371374"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0&airingId=1300371374&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1300371374&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0&airingId=1300371374"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=18802289-ade6-4e8d-91a0-30b2b58f69a0"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300371374"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1300371374"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300371374&playID=18802289-ade6-4e8d-91a0-30b2b58f69a0"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1300371374"
+
+---
+
+
+========================================
+Event: SMU vs. Boston College
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 6bc01567-8e48-43d9-aef9-a0192ebcd2b7
+AiringID: 
+SimulcastAiringID: 1301561704
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561704"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561704&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7&airingId=1301561704"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7&airingId=1301561704&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301561704&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7&airingId=1301561704"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561704"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301561704"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561704&playID=6bc01567-8e48-43d9-aef9-a0192ebcd2b7"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301561704"
+
+---
+
+
+========================================
+Event: Radford vs. #18 North Carolina
+Network: ACCN (ID: acc)
+Status: LIVE
+PlayID: 9ec99dd6-ab7a-454d-bdfd-20d23c5ed609
+AiringID: 
+SimulcastAiringID: 1300371260
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300371260"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300371260&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609&airingId=1300371260"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609&airingId=1300371260&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1300371260&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609&airingId=1300371260"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300371260"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1300371260"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300371260&playID=9ec99dd6-ab7a-454d-bdfd-20d23c5ed609"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1300371260"
+
+---
+
+
+========================================
+Event: Hampton vs. Virginia
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 83b7c4d5-9f94-4512-991a-15963868fbce
+AiringID: 
+SimulcastAiringID: 1301332472
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=83b7c4d5-9f94-4512-991a-15963868fbce"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=83b7c4d5-9f94-4512-991a-15963868fbce&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301332472"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301332472&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=83b7c4d5-9f94-4512-991a-15963868fbce&airingId=1301332472"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=83b7c4d5-9f94-4512-991a-15963868fbce&airingId=1301332472&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301332472&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=83b7c4d5-9f94-4512-991a-15963868fbce"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=83b7c4d5-9f94-4512-991a-15963868fbce&airingId=1301332472"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=83b7c4d5-9f94-4512-991a-15963868fbce"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301332472"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301332472"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301332472&playID=83b7c4d5-9f94-4512-991a-15963868fbce"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301332472"
+
+---
+
+
+========================================
+Event: Nothing But Net
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 2ba3dd52-59a1-43f9-b0c7-04c07bb64df8
+AiringID: 
+SimulcastAiringID: 1301338967
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338967"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338967&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8&airingId=1301338967"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8&airingId=1301338967&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301338967&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8&airingId=1301338967"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338967"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301338967"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338967&playID=2ba3dd52-59a1-43f9-b0c7-04c07bb64df8"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301338967"
+
+---
+
+
+========================================
+Event: Nothing But Net
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 77618203-539e-4d86-974f-f614b1ee873c
+AiringID: 
+SimulcastAiringID: 1301338971
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=77618203-539e-4d86-974f-f614b1ee873c"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=77618203-539e-4d86-974f-f614b1ee873c&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338971"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338971&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=77618203-539e-4d86-974f-f614b1ee873c&airingId=1301338971"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=77618203-539e-4d86-974f-f614b1ee873c&airingId=1301338971&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301338971&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=77618203-539e-4d86-974f-f614b1ee873c"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=77618203-539e-4d86-974f-f614b1ee873c&airingId=1301338971"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=77618203-539e-4d86-974f-f614b1ee873c"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338971"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301338971"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338971&playID=77618203-539e-4d86-974f-f614b1ee873c"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301338971"
+
+---
+
+
+========================================
+Event: ACC Network Basketball Podcast
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: bdb641d8-f9d4-4b60-8643-25b17e5739bc
+AiringID: 
+SimulcastAiringID: 1301338982
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338982"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338982&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc&airingId=1301338982"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc&airingId=1301338982&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301338982&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc&airingId=1301338982"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338982"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301338982"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338982&playID=bdb641d8-f9d4-4b60-8643-25b17e5739bc"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301338982"
+
+---
+
+
+========================================
+Event: ACC Network Basketball Podcast
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: ab6c00b9-2198-45e6-81f5-9168e17e785b
+AiringID: 
+SimulcastAiringID: 1301338998
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338998"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301338998&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b&airingId=1301338998"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b&airingId=1301338998&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301338998&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b&airingId=1301338998"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=ab6c00b9-2198-45e6-81f5-9168e17e785b"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338998"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301338998"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301338998&playID=ab6c00b9-2198-45e6-81f5-9168e17e785b"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301338998"
+
+---
+
+
+========================================
+Event: California vs. #15 Louisville
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d
+AiringID: 
+SimulcastAiringID: 1301561748
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561748"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561748&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d&airingId=1301561748"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d&airingId=1301561748&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301561748&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d&airingId=1301561748"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561748"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301561748"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561748&playID=bb38e9b8-27f3-4b48-a1bf-c1d2b78f621d"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301561748"
+
+---
+
+
+========================================
+Event: Wake Forest vs. #14 Virginia
+Network: ACCN (ID: acc)
+Status: LIVE
+PlayID: c1709862-6dab-4399-a8ce-a197dd663d67
+AiringID: 
+SimulcastAiringID: 1301561748
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c1709862-6dab-4399-a8ce-a197dd663d67"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c1709862-6dab-4399-a8ce-a197dd663d67&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561748"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561748&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c1709862-6dab-4399-a8ce-a197dd663d67&airingId=1301561748"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c1709862-6dab-4399-a8ce-a197dd663d67&airingId=1301561748&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301561748&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=c1709862-6dab-4399-a8ce-a197dd663d67"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=c1709862-6dab-4399-a8ce-a197dd663d67&airingId=1301561748"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=c1709862-6dab-4399-a8ce-a197dd663d67"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561748"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301561748"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561748&playID=c1709862-6dab-4399-a8ce-a197dd663d67"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301561748"
+
+---
+
+
+========================================
+Event: Florida St vs. Clemson
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: 51d02d7f-993f-45ff-96c4-fd2eb4652eff
+AiringID: 
+SimulcastAiringID: 1301561787
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561787"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301561787&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff&airingId=1301561787"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff&airingId=1301561787&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301561787&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff&airingId=1301561787"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561787"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301561787"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301561787&playID=51d02d7f-993f-45ff-96c4-fd2eb4652eff"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301561787"
+
+---
+
+
+========================================
+Event: Syracuse vs. #18 Miami
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551
+AiringID: 
+SimulcastAiringID: 1301654717
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301654717"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301654717&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551&airingId=1301654717"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551&airingId=1301654717&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301654717&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551&airingId=1301654717"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301654717"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301654717"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301654717&playID=c4ed7a46-83b1-47ab-b5ea-1d38bb2dc551"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301654717"
+
+---
+
+
+========================================
+Event: ACC Network Football Podcast
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: db279747-3332-494f-bae0-481d91f71456
+AiringID: 
+SimulcastAiringID: 1301339231
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=db279747-3332-494f-bae0-481d91f71456"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=db279747-3332-494f-bae0-481d91f71456&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301339231"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1301339231&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=db279747-3332-494f-bae0-481d91f71456&airingId=1301339231"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=db279747-3332-494f-bae0-481d91f71456&airingId=1301339231&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1301339231&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=db279747-3332-494f-bae0-481d91f71456"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=db279747-3332-494f-bae0-481d91f71456&airingId=1301339231"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=db279747-3332-494f-bae0-481d91f71456"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301339231"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1301339231"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1301339231&playID=db279747-3332-494f-bae0-481d91f71456"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1301339231"
+
+---
+
+
+========================================
+Event: ACC PM
+Network: ACCN (ID: acc)
+Status: UPCOMING
+PlayID: c50f7521-ec63-46d4-9b1c-f8f0bf01c57e
+AiringID: 
+SimulcastAiringID: 1300615349
+========================================
+
+# Format 1: Current (playID only)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e"
+
+# Format 2: playID + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e&networkId=acc"
+
+# Format 3: airingId only (simulcast preferred)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300615349"
+
+# Format 4: airingId + networkId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?airingId=1300615349&networkId=acc"
+
+# Format 5: playID + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e&airingId=1300615349"
+
+# Format 6: playID + airingId + networkId (nuclear option)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e&airingId=1300615349&networkId=acc"
+
+# Format 7: Linear channel (airingId + networkId)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showLinearChannel?airingId=1300615349&networkId=acc"
+
+# Format 8: showVideo endpoint (playID)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e"
+
+# Format 9: showVideo + airingId
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showVideo?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e&airingId=1300615349"
+
+# Format 10: ESPN scheme (not sportscenter)
+adb shell am start -a android.intent.action.VIEW -d "espn://x-callback-url/showWatchStream?playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e"
+
+# Format 11: showEvent (simulcast as eventId) ⭐⭐⭐ HIGHEST PRIORITY
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300615349"
+
+# Format 13: playEvent (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/playEvent?eventId=1300615349"
+
+# Format 14: showEvent + playID (hybrid)
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=1300615349&playID=c50f7521-ec63-46d4-9b1c-f8f0bf01c57e"
+
+# Format 15: showAiring (simulcast) ⭐
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=1300615349"
+
+---
+
+
+========================================
+TESTING INSTRUCTIONS
+========================================
+
+1. Connect to your Fire TV via ADB:
+   adb connect 192.168.x.x
+
+2. Test HIGH PRIORITY formats first (marked with ⭐):
+   - Format 11: showEvent with simulcast_airing_id ⭐⭐⭐
+   - Format 15: showAiring with simulcast_airing_id ⭐
+   - Format 12: showEvent with airing_id ⭐⭐
+   - Format 13: playEvent ⭐
+
+3. For each test:
+   - Copy/paste the adb command
+   - Observe what happens:
+     ✅ Opens ESPN app and plays content = SUCCESS
+     ❌ Opens app but shows error = Wrong format
+     ❌ Doesn't open app = Invalid deeplink
+     ⚠️  Opens app and asks for login = Needs MVPD authentication
+     ⚠️  Opens app but shows "unavailable" = MVPD auth issue
+
+4. Record your findings:
+   Network: ESPN2
+   Format: 11 (showEvent with simulcast)
+   Result: SUCCESS - video played WITHOUT asking for cable login
+   
+5. Testing sequence (recommended):
+   Step 1: Test Format 1 on ESPN (baseline - should work)
+   Step 2: Test Format 1 on ESPN2 (should fail or ask for auth)
+   Step 3: Test Format 11 on ESPN2 (hypothesis: should work!)
+   Step 4: Test Format 11 on ACCN and ESPNews
+
+========================================
+MOST LIKELY TO WORK (PREDICTIONS)
+========================================
+
+⭐⭐⭐ Format 11: showEvent with simulcast_airing_id
+  → HIGHEST PROBABILITY - bypasses channel MVPD auth
+  → Uses simulcast airing as event identifier
+  → Targets specific game, not linear channel feed
+  → Should work for ESPN2, ACCN, ESPNews WITHOUT cable login
+
+⭐⭐ Format 12: showEvent with airing_id
+  → Second choice if simulcast version doesn't work
+  → Same theory, different ID
+
+⭐ Format 15: showAiring with simulcast_airing_id
+  → Dedicated endpoint for airings
+  → Alternative route to same content
+
+Format 2: playID + networkId
+  → Traditional fallback with network context
+  
+Format 4: airingId + networkId  
+  → Channel-based approach with explicit network
+
+========================================
+KEY INSIGHT: MVPD Authentication
+========================================
+
+🔑 All networks have MVPD requirement in API:
+   authTypes: ['MVPD'] = requires cable/satellite
+
+Why ESPN "works" but ESPN2 doesn't:
+  ✅ ESPN app pre-authenticated with provider
+  ✅ ESPN has looser enforcement
+  ❌ ESPN2/ACCN/ESPNews strictly enforce auth
+  ❌ Without cable login, channel streams blocked
+
+Event-based hypothesis:
+  → showEvent/showAiring may bypass channel auth
+  → Targets specific airing, not continuous channel
+  → Could work with just ESPN+ (no cable needed)
+
+Database insights:
+  • airing_id = Basic airing identifier
+  • simulcast_airing_id = Cross-network airing ID
+  • simulcast_id preferred (handles multi-network events)
+
+========================================
+EXPECTED RESULTS BY NETWORK
+========================================
+
+ESPN (espn1):
+  - Format 1 should work (your baseline)
+  - Format 11 should also work
+  - Use this as your control group
+
+ESPN2 (espn2):
+  - Format 1 probably fails or asks for cable login
+  - Format 11 (showEvent) should bypass auth ✨
+  
+ACCN (acc):
+  - Format 1 probably fails or asks for cable login
+  - Format 11, 12, or 15 might work
+  
+ESPNews (espnews):
+  - Same as ESPN2
+  - Format 11 is best bet
+
+ESPNU (espnu):
+  - You reported this works
+  - Format 1 should succeed
+  - Good for comparison testing
+
+========================================
+QUICK TEST SCRIPT
+========================================
+
+To rapidly test the most promising formats:
+
+#!/bin/bash
+# Quick test of priority formats for ESPN2
+
+FIRE_TV="192.168.x.x"
+adb connect $FIRE_TV
+
+echo "Testing ESPN2 event..."
+
+# Baseline (should fail)
+echo "Format 1: playID only"
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showWatchStream?playID=PLAY_ID_HERE"
+sleep 5
+
+# Magic bullet (should work!)
+echo "Format 11: showEvent with simulcast"
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showEvent?eventId=SIMULCAST_ID_HERE"
+sleep 5
+
+# Alternative
+echo "Format 15: showAiring"
+adb shell am start -a android.intent.action.VIEW -d "sportscenter://x-callback-url/showAiring?airingId=SIMULCAST_ID_HERE"
+
+========================================
+WHAT TO REPORT BACK
+========================================
+
+Please test and share:
+
+1. ✅/❌ Does Format 11 work for ESPN2?
+2. ✅/❌ Does Format 11 work for ACCN?
+3. ✅/❌ Does Format 11 work for ESPNews?
+4. ⚠️  Does it ask for cable provider login?
+5. 📝 Any error messages from ESPN app?
+6. 🔍 Differences between airing_id vs simulcast_airing_id?
+
+Critical findings we need:
+❓ Can showEvent bypass MVPD authentication?
+❓ Does simulcast_airing_id work as eventId?
+❓ Is there a pattern to what works vs. fails?
+
+If Format 11 works, we've SOLVED the ESPN2/ACCN/ESPNews problem! 🎉
+
+========================================
+DEBUGGING TIPS
+========================================
+
+If nothing works:
+1. Check ESPN app authentication status
+2. Try clearing ESPN app data and re-testing
+3. Compare logcat output between ESPN vs ESPN2
+4. Test both LIVE and UPCOMING events
+
+To check authentication:
+adb shell am start -n com.espn.score_center/com.espn.sportscenter.ui.settings.SettingsActivity
+
+To see app logs:
+adb logcat -s ESPN:* SportsCenterApp:*
+
+This will tell us how to update the resolver!
+
+✅ Test cases generated!
+📄 Output saved to: deeplink_test_cases.txt
+
+Sample events by network:
+network  test_cases
+-------  ----------
+ACCN     20        
+
+📋 Review deeplink_test_cases.txt and start testing!
+💡 Priority: Test Format 11 (showEvent) on ESPN2/ACCN first!
+🎯 This is our best chance to bypass MVPD authentication!

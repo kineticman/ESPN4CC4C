@@ -86,6 +86,7 @@ query Airings(
     packages { name }
     image { url }
     language
+    isReAir
   }
 }
 """.strip()
@@ -132,7 +133,8 @@ def ensure_schema(conn: sqlite3.Connection):
       event_type TEXT,
       airing_id TEXT,
       simulcast_airing_id TEXT,
-      language TEXT
+      language TEXT,
+      is_reair INTEGER
     );
     CREATE TABLE IF NOT EXISTS feeds(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,6 +169,7 @@ def migrate_schema(conn: sqlite3.Connection):
         "airing_id": "TEXT",
         "simulcast_airing_id": "TEXT",
         "language": "TEXT",
+        "is_reair": "INTEGER",
     }
 
     # Add missing columns
@@ -205,6 +208,7 @@ def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
         "airing_id",
         "simulcast_airing_id",
         "language",
+        "is_reair",
     )
     vals = [row.get(k) for k in cols]
     placeholders = ",".join(["?"] * len(cols))
@@ -322,6 +326,9 @@ def main():
                 # Get language (e.g., "en", "es", etc.)
                 language = a.get("language")
 
+                # Get Re-Air flag - convert boolean to integer for SQLite
+                is_reair = 1 if a.get("isReAir") else 0
+
                 eid = stable_event_id("espn-watch", base_id)
                 upsert_event(
                     conn,
@@ -347,6 +354,7 @@ def main():
                         "airing_id": a.get("airingId"),
                         "simulcast_airing_id": a.get("simulcastAiringId"),
                         "language": language,
+                        "is_reair": is_reair,
                     },
                 )
                 replace_feeds(conn, eid, [espn_player_url(a)])
