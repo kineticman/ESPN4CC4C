@@ -3,16 +3,22 @@
 # First-run safe refresher for ESPN4CC4C container
 # - Runs DB migration (idempotent)
 # - Ingests ESPN Watch Graph
+# - Applies event filters
 # - Builds plan
 # - Generates XMLTV + M3U
 # - Prints a concise summary with basic validation
 
 import os
 import shlex
+import sqlite3
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+# Import filtering logic
+sys.path.insert(0, "/app/bin")
+from filter_events import EventFilter, filter_events_from_db
 
 # -----------------------------
 # Helpers
@@ -115,14 +121,53 @@ print(
 # -----------------------------
 # Step 1: Ingest
 # -----------------------------
-print(f"Step 1/4: Ingesting ESPN Watch Graph ({days} days)...")
+print(f"Step 1/5: Ingesting ESPN Watch Graph ({days} days)...")
 ingest = BIN / "ingest_watch_graph_all_to_db.py"
 run(["python3", str(ingest), "--db", DB, "--days", str(days)])
 
 # -----------------------------
-# Step 2: Build plan
+# Step 2: Apply Filters
 # -----------------------------
-print(f"Step 2/4: Building plan ({VALID_HOURS}h validity)...")
+print("Step 2/5: Applying event filters...")
+FILTERS_INI = "/app/filters.ini"
+
+try:
+    # Load filter configuration
+    event_filter = EventFilter(FILTERS_INI)
+    
+    # Print filter summary for user visibility
+    print(event_filter.get_filter_summary())
+    print()
+    
+    # Connect to database and apply filters
+    conn = sqlite3.connect(DB)
+    included_event_ids = filter_events_from_db(conn, event_filter)
+    
+    # Delete filtered-out events from the database
+    # This ensures build_plan only sees events that passed filters
+    if included_event_ids:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(included_event_ids))
+        delete_query = f"DELETE FROM events WHERE id NOT IN ({placeholders})"
+        cursor.execute(delete_query, included_event_ids)
+        deleted_count = cursor.rowcount
+        conn.commit()
+        print(f"[filter] Removed {deleted_count} events that didn't pass filters")
+    else:
+        print("[filter] WARNING: No events passed filters! All events excluded.")
+    
+    conn.close()
+    
+except FileNotFoundError:
+    print(f"[filter] No filters.ini found at {FILTERS_INI}, skipping filtering (all events included)")
+except Exception as e:
+    print(f"[filter] WARNING: Error applying filters: {e}")
+    print("[filter] Continuing without filtering (all events included)")
+
+# -----------------------------
+# Step 3: Build plan
+# -----------------------------
+print(f"Step 3/5: Building plan ({VALID_HOURS}h validity)...")
 build_plan = BIN / "build_plan.py"
 run(
     [
@@ -142,17 +187,17 @@ run(
 )
 
 # -----------------------------
-# Step 3: XMLTV
+# Step 4: XMLTV
 # -----------------------------
-print("Step 3/4: Generating XMLTV EPG...")
+print("Step 4/5: Generating XMLTV EPG...")
 xmltv = BIN / "xmltv_from_plan.py"
 epg_path = str(Path(OUT) / "epg.xml")
 run(["python3", str(xmltv), "--db", DB, "--out", epg_path])
 
 # -----------------------------
-# Step 4: M3U
+# Step 5: M3U
 # -----------------------------
-print("Step 4/4: Generating M3U playlist...")
+print("Step 5/5: Generating M3U playlist...")
 m3u = BIN / "m3u_from_plan.py"
 m3u_path = str(Path(OUT) / "playlist.m3u")
 cmd = ["python3", str(m3u), "--db", DB, "--out", m3u_path]

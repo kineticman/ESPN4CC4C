@@ -280,6 +280,10 @@ def build_programme_elements(
             else:
                 bits: List[str] = []
 
+                # Start with the title so we know what event this is
+                if title_text:
+                    bits.append(title_text)
+
                 if p.league_name:
                     bits.append(p.league_name)
 
@@ -309,39 +313,67 @@ def build_programme_elements(
                 desc_el.text = desc_text
             # --- END FIX ---
 
-            # Categories – driven by content_kind, tidy and *deduped*.
+            # Categories – comprehensive ESPN metadata tagging
             live = is_live_event(p)
             kind = (getattr(p, "content_kind", None) or "").strip().lower()
 
             cats_raw: List[str] = []
 
-            if kind == "sports_event":
-                # True competitions (games, duals, invitationals, etc.)
-                cats_raw.extend([
-                    "Sports",
-                    p.sport,
-                    p.league_name,
-                    "Sports Event",
-                ])
-            elif kind == "sports_show":
-                # Studio / talk / recap shows that are still sports-related.
-                cats_raw.extend([
-                    "Sports",
-                    p.sport,
-                    p.league_name,
-                    "Sports Talk",
-                ])
-            else:
-                # Non-sports or ambiguous content: tag by network only.
-                if p.network:
-                    cats_raw.append(p.network)
+            # Always start with Sports for any sports-related content
+            if kind in ("sports_event", "sports_show"):
+                cats_raw.append("Sports")
 
-            # Tag everything non-placeholder with the project marker.
+            # Add sport type (Hockey, Football, Basketball, etc.)
+            if p.sport:
+                cats_raw.append(p.sport)
+
+            # Add league/competition name (NHL, NFL, NCAA Football, etc.)
+            if p.league_name:
+                cats_raw.append(p.league_name)
+
+            # Add network (ESPN, ESPN2, ESPNU, ACCN, etc.)
+            if p.network:
+                cats_raw.append(p.network)
+
+            # Add content type
+            if kind == "sports_event":
+                cats_raw.append("Sports Event")
+            elif kind == "sports_show":
+                cats_raw.append("Sports Talk")
+
+            # Add package info (ESPN+, ESPN3, etc.)
+            if p.packages:
+                # packages is JSON array like '["ESPN+"]' or '["ESPN+","ESPN3"]'
+                import json
+                try:
+                    pkg_list = json.loads(p.packages)
+                    for pkg in pkg_list:
+                        if pkg:
+                            cats_raw.append(pkg)
+                except:
+                    pass
+
+            # Add event type for REPLAY, but skip "LIVE" (we use <live/> tag instead) and "UPCOMING"
+            if p.event_type:
+                et = p.event_type.strip().upper()
+                if et and et not in ("UPCOMING", "LIVE"):
+                    cats_raw.append(et)
+
+            # Add language if non-English
+            if p.language and p.language.lower() not in ("en", "eng", "english"):
+                cats_raw.append(p.language.upper())
+
+            # Tag everything non-placeholder with the project marker
             cats_raw.append("ESPN4CC4C")
 
-            # If you decide later you *do* want network visible on events/shows,
-            # you could tack `p.network` on above in those branches.
+            # Dedupe while preserving order
             cats = [c for c in uniq(cats_raw) if c]
+            
+            # Emit categories (if any)
+            for cat in cats:
+                cat_el = ET.SubElement(prog_el, "category")
+                cat_el.text = cat
+            
             # Icon / artwork
             if p.image:
                 ET.SubElement(prog_el, "icon", src=p.image)
@@ -355,11 +387,6 @@ def build_programme_elements(
             if live:
                 live_el = ET.SubElement(prog_el, "live")
                 live_el.text = "1"
-
-        # Emit categories (if any)
-        for cat in cats:
-            cat_el = ET.SubElement(prog_el, "category")
-            cat_el.text = cat
 
 
 def build_xmltv_tree(channels: List[ChannelRow], programmes: List[ProgrammeRow]) -> ET.ElementTree:
