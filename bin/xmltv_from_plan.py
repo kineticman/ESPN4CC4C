@@ -317,6 +317,10 @@ def build_programme_elements(
             live = is_live_event(p)
             kind = (getattr(p, "content_kind", None) or "").strip().lower()
 
+            # Fallback: if content_kind is missing but we have sport/league, assume sports_event
+            if not kind and (p.sport or p.league_name):
+                kind = "sports_event"
+
             cats_raw: List[str] = []
 
             # Always start with Sports for any sports-related content
@@ -331,8 +335,24 @@ def build_programme_elements(
             if p.league_name:
                 cats_raw.append(p.league_name)
 
-            # Add network (ESPN, ESPN2, ESPNU, ACCN, etc.)
-            if p.network:
+            # Add package info first (ESPN+, ESPN3, etc.) so we can skip them as networks
+            packages_set = set()
+            if p.packages:
+                # packages is JSON array like '["ESPN_PLUS"]' or '["ESPN_PLUS","ESPN3"]'
+                import json
+                try:
+                    pkg_list = json.loads(p.packages)
+                    for pkg in pkg_list:
+                        if pkg:
+                            # Normalize package names: ESPN_PLUS -> ESPN+
+                            normalized = pkg.replace("_", " ").replace(" PLUS", "+")
+                            packages_set.add(normalized)
+                            cats_raw.append(normalized)
+                except:
+                    pass
+
+            # Add network (ESPN, ESPN2, ESPNU, ACCN, etc.) - but skip if it's actually a package
+            if p.network and p.network not in packages_set:
                 cats_raw.append(p.network)
 
             # Add content type
@@ -340,18 +360,6 @@ def build_programme_elements(
                 cats_raw.append("Sports Event")
             elif kind == "sports_show":
                 cats_raw.append("Sports Talk")
-
-            # Add package info (ESPN+, ESPN3, etc.)
-            if p.packages:
-                # packages is JSON array like '["ESPN+"]' or '["ESPN+","ESPN3"]'
-                import json
-                try:
-                    pkg_list = json.loads(p.packages)
-                    for pkg in pkg_list:
-                        if pkg:
-                            cats_raw.append(pkg)
-                except:
-                    pass
 
             # Add event type for REPLAY, but skip "LIVE" (we use <live/> tag instead) and "UPCOMING"
             if p.event_type:
