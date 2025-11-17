@@ -317,9 +317,14 @@ def build_programme_elements(
             live = is_live_event(p)
             kind = (getattr(p, "content_kind", None) or "").strip().lower()
 
-            # Fallback: if content_kind is missing but we have sport/league, assume sports_event
+            # Fallback: if content_kind is missing but we have sport/league, try to infer the type
             if not kind and (p.sport or p.league_name):
-                kind = "sports_event"
+                # Only treat as sports_event if title looks like a game (has "vs." or "@")
+                title_lower = (p.title or "").lower()
+                if " vs. " in title_lower or " vs " in title_lower or " @ " in title_lower:
+                    kind = "sports_event"
+                # Shows like "SportsCenter", "Monday Night Postgame" should stay empty
+                # and won't get Sports/Sports Event tags
 
             cats_raw: List[str] = []
 
