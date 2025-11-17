@@ -17,6 +17,9 @@ services:
       - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.168.86.72:8094}
       - CC_HOST=${CC_HOST:-192.168.86.72}
       - CC_PORT=${CC_PORT:-5589}
+      # Optional: Channels-4-Chrome (CH4C) bridge for http:// playlists
+      - CH4C_HOST=${CH4C_HOST:-127.0.0.1}
+      - CH4C_PORT=${CH4C_PORT:-2442}
       - PORT=${PORT:-8094}
       - APP_MODULE=${APP_MODULE:-bin.vc_resolver:app}
       - VALID_HOURS=${VALID_HOURS:-72}
