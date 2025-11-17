@@ -84,6 +84,9 @@ query Airings(
     league  { id name abbreviation }
     sport   { id name abbreviation }
     packages { name }
+    category { name }
+    subcategory { name }
+    competition { id }
     image { url }
     language
     isReAir
@@ -134,7 +137,11 @@ def ensure_schema(conn: sqlite3.Connection):
       airing_id TEXT,
       simulcast_airing_id TEXT,
       language TEXT,
-      is_reair INTEGER
+      is_reair INTEGER,
+      content_kind TEXT,
+      category_name TEXT,
+      subcategory_name TEXT,
+      has_competition INTEGER
     );
     CREATE TABLE IF NOT EXISTS feeds(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,6 +177,10 @@ def migrate_schema(conn: sqlite3.Connection):
         "simulcast_airing_id": "TEXT",
         "language": "TEXT",
         "is_reair": "INTEGER",
+        "content_kind": "TEXT",
+        "category_name": "TEXT",
+        "subcategory_name": "TEXT",
+        "has_competition": "INTEGER",
     }
 
     # Add missing columns
@@ -209,6 +220,10 @@ def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
         "simulcast_airing_id",
         "language",
         "is_reair",
+        "content_kind",
+        "category_name",
+        "subcategory_name",
+        "has_competition",
     )
     vals = [row.get(k) for k in cols]
     placeholders = ",".join(["?"] * len(cols))
@@ -309,13 +324,34 @@ def main():
                 league_obj = a.get("league") or {}
                 network_obj = a.get("network") or {}
                 packages_list = a.get("packages") or []
+                category_obj = a.get("category") or {}
+                subcategory_obj = a.get("subcategory") or {}
+                competition_obj = a.get("competition") or {}
 
-                # Convert packages to JSON string
-                packages_str = (
-                    json.dumps([p.get("name") for p in packages_list if p.get("name")])
-                    if packages_list
-                    else None
-                )
+                # Convert packages to JSON string and extract package names
+                package_names = [p.get("name") for p in packages_list if p.get("name")]
+                packages_str = json.dumps(package_names) if package_names else None
+
+                # Extract category names
+                category_name = category_obj.get("name") if isinstance(category_obj, dict) else None
+                subcategory_name = subcategory_obj.get("name") if isinstance(subcategory_obj, dict) else None
+                
+                # Check if this has a competition (indicates actual sports event vs show)
+                has_competition = 1 if (competition_obj and competition_obj.get("id")) else 0
+
+                # Get network name, but set to NULL if it's actually a package
+                # ESPN's API sometimes returns "ESPN+" as the network when it's really just a package
+                raw_network_name = network_obj.get("name")
+                network_name = None
+                if raw_network_name:
+                    # Check if this "network" is actually in the packages list
+                    # Common package names that get mistakenly listed as networks
+                    is_package = (
+                        raw_network_name in package_names
+                        or raw_network_name in ("ESPN+", "ESPN3", "ESPN Player")
+                    )
+                    if not is_package:
+                        network_name = raw_network_name
 
                 # Extract image URL from nested image object
                 image_obj = a.get("image") or {}
@@ -341,9 +377,9 @@ def main():
                         "subtitle": None,
                         "summary": None,  # Don't use league name as summary - it's redundant
                         "image": image_url,
-                        "network": network_obj.get("name"),
+                        "network": network_name,  # Use cleaned network (NULL if it's a package)
                         "network_id": network_obj.get("id"),
-                        "network_short": network_obj.get("shortName"),
+                        "network_short": network_obj.get("shortName") if network_name else None,
                         "league_name": league_obj.get("name"),
                         "league_id": league_obj.get("id"),
                         "league_abbr": league_obj.get("abbreviation"),
@@ -355,6 +391,10 @@ def main():
                         "simulcast_airing_id": a.get("simulcastAiringId"),
                         "language": language,
                         "is_reair": is_reair,
+                        "content_kind": None,  # Not in API response, keep NULL for now
+                        "category_name": category_name,
+                        "subcategory_name": subcategory_name,
+                        "has_competition": has_competition,
                     },
                 )
                 replace_feeds(conn, eid, [espn_player_url(a)])

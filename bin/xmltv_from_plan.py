@@ -57,6 +57,7 @@ class ProgrammeRow:
     language: Optional[str]
     is_reair: Optional[int]
     content_kind: Optional[str]
+    has_competition: Optional[int]
 
 
 
@@ -116,7 +117,8 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
         e.event_type           AS event_type,
         e.language             AS language,
         e.is_reair             AS is_reair,
-        e.content_kind         AS content_kind
+        e.content_kind         AS content_kind,
+        e.has_competition      AS has_competition
     FROM plan_slot ps
     LEFT JOIN events e ON e.id = ps.event_id
     WHERE ps.plan_id = ?
@@ -148,6 +150,7 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
                 language=r["language"],
                 is_reair=r["is_reair"],
                 content_kind=r["content_kind"],
+                has_competition=r["has_competition"],
             )
         )
     return programmes
@@ -317,14 +320,46 @@ def build_programme_elements(
             live = is_live_event(p)
             kind = (getattr(p, "content_kind", None) or "").strip().lower()
 
-            # Fallback: if content_kind is missing but we have sport/league, try to infer the type
-            if not kind and (p.sport or p.league_name):
-                # Only treat as sports_event if title looks like a game (has "vs." or "@")
-                title_lower = (p.title or "").lower()
-                if " vs. " in title_lower or " vs " in title_lower or " @ " in title_lower:
+            # Fallback: if content_kind is missing, use has_competition as the primary signal
+            if not kind:
+                has_comp = coerce_int(getattr(p, "has_competition", None))
+                
+                if has_comp == 1:
+                    # ESPN says this has a competition object = it's a sports event
                     kind = "sports_event"
-                # Shows like "SportsCenter", "Monday Night Postgame" should stay empty
-                # and won't get Sports/Sports Event tags
+                elif (p.sport or p.league_name):
+                    # Has sport/league but no competition - likely a show
+                    # But double-check with pattern matching as fallback
+                    title_lower = (p.title or "").lower()
+                    sport_lower = (p.sport or "").lower()
+                    
+                    # Check for game patterns
+                    has_vs = " vs. " in title_lower or " vs " in title_lower
+                    has_at = " @ " in title_lower
+                    
+                    # Sport-specific event patterns (for sports without competition data)
+                    sport_event_keywords = {
+                        "tennis": ["court", "championship", "semifinal", "quarterfinal", "final", "round"],
+                        "golf": ["round", "tournament", "championship"],
+                        "racing": ["practice", "qualifying", "race", "grand prix"],
+                        "motorsports": ["practice", "qualifying", "race", "grand prix"],
+                    }
+                    has_sport_pattern = False
+                    if sport_lower in sport_event_keywords:
+                        has_sport_pattern = any(keyword in title_lower for keyword in sport_event_keywords[sport_lower])
+                    
+                    # Check for show keywords
+                    show_keywords = [
+                        "sportscenter", "postgame", "countdown", "tonight", "kickoff",
+                        "pregame", "in 60", "read & react", "fantasy focus", "get up",
+                        "first take", "pardon", "highly questionable", "around the horn"
+                    ]
+                    is_show = any(keyword in title_lower for keyword in show_keywords)
+                    
+                    if (has_vs or has_at or has_sport_pattern) and not is_show:
+                        kind = "sports_event"
+                    elif is_show:
+                        kind = "sports_show"
 
             cats_raw: List[str] = []
 
