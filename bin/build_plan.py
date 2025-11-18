@@ -15,14 +15,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-# Filter support
-try:
-    from filter_events import EventFilter, filter_events_from_db
-
-    FILTERS_AVAILABLE = True
-except ImportError:
-    FILTERS_AVAILABLE = False
-
 # ---------- Config fallbacks ----------
 try:
     from version import VERSION as BUILD_VERSION  # type: ignore
@@ -605,49 +597,17 @@ def main() -> None:
     seeded = seed_channels_if_empty(conn, args.lanes)
     channels = load_channels(conn)
 
-    # NEW: Apply event filtering if filters.ini exists
-    filtered_event_ids = None
-    filter_config_path = os.path.join(BASE_DIR, "filters.ini")
-
-    if FILTERS_AVAILABLE and os.path.exists(filter_config_path):
-        try:
-            jlog(event="filter_loading", path=filter_config_path)
-            event_filter = EventFilter(filter_config_path)
-            filter_summary = event_filter.get_filter_summary()
-
-            # Get filtered event IDs
-            filtered_event_ids = filter_events_from_db(conn, event_filter)
-
-            jlog(
-                event="filter_applied",
-                total_events_before_time_filter=conn.execute(
-                    "SELECT COUNT(*) FROM events"
-                ).fetchone()[0],
-                filtered_event_ids=len(filtered_event_ids),
-                filter_summary=filter_summary,
-            )
-        except Exception as e:
-            jlog(
-                level="warning",
-                event="filter_error",
-                error=str(e),
-                message="Proceeding without filters",
-            )
-            filtered_event_ids = None
-    elif os.path.exists(filter_config_path):
-        jlog(
-            level="warning",
-            event="filter_module_missing",
-            message="filters.ini found but filter_events module not available",
-        )
-
+    # NOTE: Event filtering now happens in refresh_in_container.py (Step 2/5)
+    # which physically deletes filtered-out events from the database.
+    # build_plan.py simply loads whatever events remain in the DB.
     events = load_events(
-        conn, start_utc.isoformat(), end_utc.isoformat(), event_ids=filtered_event_ids
+        conn, start_utc.isoformat(), end_utc.isoformat(), event_ids=None
     )
 
     # Sticky lanes: seed from latest plan (one-time) and load map
     # UNLESS --force-replan is used (for filter changes)
-    sticky_map = {}
+    sticky_map: dict[str, str] = {}
+    seeded_sticky = 0
     if args.force_replan:
         jlog(
             event="force_replan_enabled",

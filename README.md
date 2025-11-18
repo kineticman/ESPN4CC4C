@@ -24,8 +24,6 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
   - Also writes `/out/playlist.ch4c.m3u` using plain `http://` URLs, controlled by `CH4C_HOST` / `CH4C_PORT` env vars.
   - Lets you point CH4C at the `.ch4c.m3u` while leaving Channels DVR on the standard M3U.
 
-> Standing rules: **GET‑only** for checks (no HEAD), **never** use proxies for ESPN endpoints.
-
 ---
 
 ## 🚀 Quick Start (Portainer — easiest)
@@ -110,7 +108,7 @@ services:
 6) **Sanity checks (browser or curl)**
 ```text
 http://<YOUR-IP>:8094/health             → {"ok": true}
-http://<YOUR-IP>:8094/out/epg.xml        → XMLTV guide
+http://<YOUR-IP>:8094/epg.xml        → XMLTV guide
 http://<YOUR-IP>:8094/playlist.m3u       → M3U with eplus1–eplus40 (Channels)
 http://<YOUR-IP>:8094/playlist.ch4c.m3u  → experimental M3U for CH4C
 http://<YOUR-IP>:8094/whatson_all        → quick view of all lanes
@@ -135,7 +133,7 @@ docker compose up -d
 
 # 4) verify
 curl -fsS "http://<YOUR-IP>:8094/health" && echo
-curl -fsS "http://<YOUR-IP>:8094/out/playlist.m3u" | head -n 20
+curl -fsS "http://<YOUR-IP>:8094/playlist.m3u" | head -n 20
 ```
 
 ---
