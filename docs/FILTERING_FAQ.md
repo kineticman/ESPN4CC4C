@@ -90,7 +90,7 @@ environment:
   - FILTER_REQUIRE_ESPN_PLUS=false
 
   # Exclude known linear networks (you can tweak this list over time)
-  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNEWS,ESPNDEPORTES,SECN,SECN+,ACCN,ACCNX,@ESPN,ESPNUnlimited
+  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNEWS,ESPN Deportes,SECN,SECN+,ACCN,ACCNX,@ESPN,ESPN Unlimited
 
   # Optional but recommended
   - FILTER_CASE_INSENSITIVE=true
@@ -108,9 +108,9 @@ On refresh you should see something like:
 [filter] Total events: 883, Included: 478, Filtered out: 405
 ```
 
-If you still see an unwanted network (e.g., ESPN Deportes), simply add it to `FILTER_EXCLUDE_NETWORKS`
-and refresh again. `filteraudit.html` will show you which networks are still present so you can tune
-the list.
+If you still see an unwanted network (for example, a new or niche ESPN-branded feed), simply add
+its `network_short` value to `FILTER_EXCLUDE_NETWORKS` and refresh again. `filteraudit.html` will
+show you which networks are still present so you can tune the list.
 
 ---
 
@@ -204,7 +204,7 @@ environment:
   - FILTER_EXCLUDE_REAIR=true
 
   # Avoid linear ESPN dupes if you already have them elsewhere
-  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNEWS,ESPNDEPORTES,SECN,SECN+,ACCN,ACCNX,@ESPN,ESPNUnlimited
+  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNEWS,ESPN Deportes,SECN,SECN+,ACCN,ACCNX,@ESPN,ESPN Unlimited
 
   # Recommended matching behavior
   - FILTER_CASE_INSENSITIVE=true
