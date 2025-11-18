@@ -11,7 +11,11 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 - **Compose‑only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
 - **Built‑in cron**: auto refresh at **08:05 / 14:05 / 20:05**; weekly **VACUUM** Sun **03:10**.
 - **Safer compose**: init‑enabled, graceful stop, `${PORT}`‑aware healthcheck, and log rotation.
-- **Filtering workflow**: simple `filters.ini` + `/whatson` views to confirm results fast.
+- **Environment variable filtering** ⭐ **NEW**: Configure all filters via env vars in docker-compose.yml (no more INI file confusion!)
+  - 16 filter variables covering networks, sports, leagues, languages, ESPN+, PPV, replays, and more
+  - Priority: **Env Vars > filters.ini > Defaults**
+  - See filtering section below for examples
+- **Filtering workflow**: `filters.ini` still supported as fallback, plus `/whatson` views to confirm results fast.
 - **Improved XMLTV**:
   - Adds an internal `content_kind` classifier (`sports_event` vs `sports_show` vs `other`) based on ESPN Watch Graph structure.
   - Exposes that to Channels as richer categories (e.g., **Sports** vs **Sports Talk**) and adds an **ESPN4CC4C** category tag for both sports and non‑sports events (not placeholders).
@@ -62,6 +66,11 @@ services:
       - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
       - VC_M3U_PATH=${VC_M3U_PATH:-/app/out/playlist.m3u}
       - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
+      # Optional: Event filtering (see Filtering section below)
+      # - FILTER_EXCLUDE_NETWORKS=ACCN,ESPN,ESPN2,ESPNDeportes,ESPNU
+      # - FILTER_REQUIRE_ESPN_PLUS=true
+      # - FILTER_EXCLUDE_PPV=true
+      # - FILTER_EXCLUDE_REAIR=true
 
     volumes:
       - ${HOST_DIR:-.}/data:/app/data
@@ -141,77 +150,103 @@ You’ll see **ESPN+ EPlus 1…40** with guide data.
 
 ---
 
-## 🎛️ Editing Filters (keep only what you care about)
+## 🎛️ Filtering Events (keep only what you care about)
 
-`filters.ini` lets you whitelist/blacklist by network, sport, league, event type, platform, and (internally) the `content_kind` that powers Sports vs Sports Talk categories.
+**New in v5.1+:** Configure filters via **environment variables** (recommended) or `filters.ini` file. Environment variables take precedence and are easier to manage in Docker.
 
-### 1) Generate a starter `filters.ini`
+### Quick Filter Examples (Environment Variables)
 
-*(works best after first refresh so counts are meaningful)*
+Add these to your docker-compose.yml `environment:` section:
 
-**Inside the container**
+**ESPN+ only, no PPV/replays**
+```yaml
+environment:
+  - FILTER_REQUIRE_ESPN_PLUS=true
+  - FILTER_EXCLUDE_PPV=true
+  - FILTER_EXCLUDE_REAIR=true
+```
+
+**Exclude ESPN linear networks (keep ESPN+, SEC, ACC, etc.)**
+```yaml
+environment:
+  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNDeportes,ESPNEWS
+```
+
+**Only specific sports**
+```yaml
+environment:
+  - FILTER_ENABLED_SPORTS=Football,Basketball,Baseball,Hockey
+```
+
+**Pro leagues only**
+```yaml
+environment:
+  - FILTER_ENABLED_LEAGUES=NFL,NBA,MLB,NHL
+```
+
+**College sports only**
+```yaml
+environment:
+  - FILTER_ENABLED_LEAGUES=NCAA
+  - FILTER_PARTIAL_LEAGUE_MATCH=true
+```
+
+### All Filter Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FILTER_ENABLED_NETWORKS` | `*` | Networks to include (comma-separated) |
+| `FILTER_EXCLUDE_NETWORKS` | `` | Networks to exclude |
+| `FILTER_ENABLED_SPORTS` | `*` | Sports to include |
+| `FILTER_EXCLUDE_SPORTS` | `` | Sports to exclude |
+| `FILTER_ENABLED_LEAGUES` | `*` | Leagues to include |
+| `FILTER_EXCLUDE_LEAGUES` | `` | Leagues to exclude |
+| `FILTER_ENABLED_EVENT_TYPES` | `*` | Event types to include |
+| `FILTER_EXCLUDE_EVENT_TYPES` | `` | Event types to exclude |
+| `FILTER_ENABLED_LANGUAGES` | `*` | Languages to include (`en`, `es`, etc.) |
+| `FILTER_EXCLUDE_LANGUAGES` | `` | Languages to exclude |
+| `FILTER_REQUIRE_ESPN_PLUS` | `` | `true` = ESPN+ only, `false` = exclude ESPN+ |
+| `FILTER_EXCLUDE_PPV` | `false` | Exclude Pay-Per-View events |
+| `FILTER_EXCLUDE_REAIR` | `false` | Exclude replays/re-airs |
+| `FILTER_EXCLUDE_NO_SPORT` | `false` | Exclude studio shows/non-sport content |
+| `FILTER_CASE_INSENSITIVE` | `true` | Case-insensitive matching |
+| `FILTER_PARTIAL_LEAGUE_MATCH` | `true` | Allow partial league name matching |
+
+### Discovery Tool: What content is available?
+
+Generate a report showing all networks, sports, and leagues with event counts:
+
+```bash
+docker compose exec espn4cc4c python3 /app/bin/generate_filter_options.py /app/data/eplus_vc.sqlite3
+```
+
+### Alternative: Using filters.ini (Legacy)
+
+If you prefer an INI file over environment variables:
+
+**1) Generate starter config:**
 ```bash
 docker compose exec espn4cc4c bash -lc "python3 /app/bin/generate_filter_options.py /app/data/eplus_vc.sqlite3 --generate-config" > filters.ini
 ```
 
-**Or on the host (if Python 3 is installed)**
+**2) Edit `filters.ini`** at the repo root (will be `/app/filters.ini` in container)
+
+**3) Rebuild schedule:**
 ```bash
-python3 bin/generate_filter_options.py ./data/eplus_vc.sqlite3 --generate-config > filters.ini
-```
-
-### 2) Edit `filters.ini`
-
-Examples:
-
-**ESPN+ only, no replays**
-```ini
-[filters]
-require_espn_plus = true
-exclude_event_types = OVER
-```
-
-**Limit by sport**
-```ini
-[filters]
-enabled_sports = Hockey,Soccer
-```
-
-**Pro leagues only**
-```ini
-[filters]
-enabled_leagues = NHL,MLS,NBA,NFL
-```
-
-**Network allow‑list**
-```ini
-[filters]
-enabled_networks = ESPN,ESPN2,ESPNU,ESPN+
-```
-
-### 3) Rebuild the schedule
-
-```bash
-# triggers ingest/plan/write (uses the in‑container scripts)
 docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
 ```
 
-### 4) Confirm the effect quickly
+**Note:** Environment variables override INI file settings. Priority: **Env Vars > filters.ini > Defaults**
+
+### Verify Filter Results
+
+After changing filters, check what's in your channels:
 
 ```text
 GET http://<YOUR-IP>:8094/whatson_all?format=txt
 ```
 
-You should see lane snapshots that reflect your filter changes.
-
-**Reference keys**
-
-- `enabled_networks`, `exclude_networks`
-- `enabled_sports`, `exclude_sports`
-- `enabled_leagues`, `exclude_leagues`
-- `enabled_event_types` (e.g., `LIVE,UPCOMING`)
-- `exclude_event_types` (e.g., `OVER` to drop replays)
-- `require_espn_plus` (true/false)
-- `exclude_ppv` (true)
+You'll see a snapshot of all 40 lanes reflecting your active filters.
 
 ---
 
@@ -252,6 +287,7 @@ If you see `logs/cron_refresh.log` missing, it’s normal before the first cron 
 
 - **Health fails**: ensure Docker is running and your chosen `PORT` is free.
 - **Nothing in M3U/XML**: check `/whatson_all`; review filters; run a manual refresh.
+- **Filters not working**: Ensure you're using environment variables correctly (see Filtering section). Check container logs during refresh to see "Active Filters" summary. Environment variables override `filters.ini`.
 - **Hostname doesn’t resolve**: use IPs or ensure your LAN/Tailscale DNS resolves hostnames; `dns_search` alone doesn’t create DNS.
 - **Large Docker logs**: rotation is enabled (10MB×5). You can tune under `logging` in compose.
 

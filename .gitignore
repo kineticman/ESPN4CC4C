@@ -62,3 +62,4 @@ docker-compose-backup.yml
 docker-compose.override.yml
 .tools/
 devtools/
+filters.ini

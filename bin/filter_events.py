@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 Event filtering for ESPN4CC4C
-Reads filters.ini and applies filters to events from the database.
+Reads filters.ini and/or environment variables and applies filters to events from the database.
+Environment variables take precedence over INI file settings.
 """
 import configparser
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -12,36 +14,86 @@ from typing import Any, Dict, List, Optional, Set
 class EventFilter:
     """Filters events based on configuration"""
 
-    def __init__(self, config_path: str = "filters.ini"):
+    def __init__(self, config_path: str = "filters.ini", use_env: bool = True):
         self.config_path = Path(config_path)
+        self.use_env = use_env
         self.config = self._load_config()
         self._parse_filters()
 
     def _load_config(self) -> configparser.ConfigParser:
-        """Load filter configuration from INI file"""
+        """Load filter configuration from INI file and/or environment variables"""
         config = configparser.ConfigParser()
 
+        # Load from INI file if it exists
         if self.config_path.exists():
             config.read(self.config_path)
+            print(f"[filter] Loaded configuration from: {self.config_path}")
+            if "filters" not in config:
+                config["filters"] = {}
         else:
-            # Return defaults if no config file
-            config["filters"] = {
-                "enabled_networks": "*",
-                "exclude_networks": "",
-                "enabled_sports": "*",
-                "exclude_sports": "",
-                "enabled_leagues": "*",
-                "exclude_leagues": "",
-                "require_espn_plus": "",
-                "exclude_ppv": "false",
-                "exclude_reair": "false",
-                "enabled_event_types": "*",
-                "exclude_event_types": "",
-                "enabled_languages": "*",
-                "exclude_languages": "",
-                "case_insensitive": "true",
-                "partial_league_match": "true",
+            print(f"[filter] No INI file found at {self.config_path}, using defaults")
+            # Set defaults if no INI file
+            config["filters"] = {}
+
+        # Apply defaults for any missing keys
+        defaults = {
+            "enabled_networks": "*",
+            "exclude_networks": "",
+            "enabled_sports": "*",
+            "exclude_sports": "",
+            "enabled_leagues": "*",
+            "exclude_leagues": "",
+            "require_espn_plus": "",
+            "exclude_ppv": "false",
+            "exclude_reair": "false",
+            "enabled_event_types": "*",
+            "exclude_event_types": "",
+            "enabled_languages": "*",
+            "exclude_languages": "",
+            "case_insensitive": "true",
+            "partial_league_match": "true",
+            "exclude_no_sport": "false",
+        }
+
+        for key, default_value in defaults.items():
+            if key not in config["filters"]:
+                config["filters"][key] = default_value
+
+        # Override with environment variables if use_env is True
+        if self.use_env:
+            env_mapping = {
+                "FILTER_ENABLED_NETWORKS": "enabled_networks",
+                "FILTER_EXCLUDE_NETWORKS": "exclude_networks",
+                "FILTER_ENABLED_SPORTS": "enabled_sports",
+                "FILTER_EXCLUDE_SPORTS": "exclude_sports",
+                "FILTER_ENABLED_LEAGUES": "enabled_leagues",
+                "FILTER_EXCLUDE_LEAGUES": "exclude_leagues",
+                "FILTER_REQUIRE_ESPN_PLUS": "require_espn_plus",
+                "FILTER_EXCLUDE_PPV": "exclude_ppv",
+                "FILTER_EXCLUDE_REAIR": "exclude_reair",
+                "FILTER_ENABLED_EVENT_TYPES": "enabled_event_types",
+                "FILTER_EXCLUDE_EVENT_TYPES": "exclude_event_types",
+                "FILTER_ENABLED_LANGUAGES": "enabled_languages",
+                "FILTER_EXCLUDE_LANGUAGES": "exclude_languages",
+                "FILTER_CASE_INSENSITIVE": "case_insensitive",
+                "FILTER_PARTIAL_LEAGUE_MATCH": "partial_league_match",
+                "FILTER_EXCLUDE_NO_SPORT": "exclude_no_sport",
             }
+
+            env_overrides = []
+            for env_var, config_key in env_mapping.items():
+                env_value = os.environ.get(env_var)
+                if env_value is not None:
+                    # Trim surrounding quotes if present
+                    if len(env_value) >= 2 and env_value[0] == env_value[-1] and env_value[0] in ('"', "'"):
+                        env_value = env_value[1:-1]
+                    config["filters"][config_key] = env_value
+                    env_overrides.append(f"{env_var}={env_value}")
+            
+            if env_overrides:
+                print(f"[filter] Applied {len(env_overrides)} environment variable override(s):")
+                for override in env_overrides:
+                    print(f"[filter]   {override}")
 
         return config
 
@@ -90,10 +142,10 @@ class EventFilter:
         value = value.strip()
 
         if not value or value.lower() in ("", "none"):
-            return set()  # Empty set = exclude all
+            return set()  # Empty set = block all (nothing passes this filter)
 
         if value in ("*", "all"):
-            return None  # None = include all (no filter)
+            return None  # None = allow all (no filtering applied)
 
         # Split by comma and normalize
         items = {s.strip() for s in value.split(",") if s.strip()}
@@ -263,7 +315,7 @@ class EventFilter:
             if s is None:
                 return "All (*)"
             if not s:
-                return "None"
+                return "None (blocked)"  # Empty set blocks everything
             return ", ".join(sorted(s)[:10]) + ("..." if len(s) > 10 else "")
 
         if self.enabled_networks is not None or self.exclude_networks:

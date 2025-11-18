@@ -132,8 +132,8 @@ print("Step 2/5: Applying event filters...")
 FILTERS_INI = "/app/filters.ini"
 
 try:
-    # Load filter configuration
-    event_filter = EventFilter(FILTERS_INI)
+    # Load filter configuration (env vars take precedence over INI file)
+    event_filter = EventFilter(FILTERS_INI, use_env=True)
     
     # Print filter summary for user visibility
     print(event_filter.get_filter_summary())
@@ -159,7 +159,25 @@ try:
     conn.close()
     
 except FileNotFoundError:
-    print(f"[filter] No filters.ini found at {FILTERS_INI}, skipping filtering (all events included)")
+    print(f"[filter] No filters.ini found at {FILTERS_INI}, using environment variables or defaults")
+    # Try with env vars only
+    event_filter = EventFilter(FILTERS_INI, use_env=True)
+    print(event_filter.get_filter_summary())
+    print()
+    
+    conn = sqlite3.connect(DB)
+    included_event_ids = filter_events_from_db(conn, event_filter)
+    
+    if included_event_ids:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(included_event_ids))
+        delete_query = f"DELETE FROM events WHERE id NOT IN ({placeholders})"
+        cursor.execute(delete_query, included_event_ids)
+        deleted_count = cursor.rowcount
+        conn.commit()
+        print(f"[filter] Removed {deleted_count} events that didn't pass filters")
+    
+    conn.close()
 except Exception as e:
     print(f"[filter] WARNING: Error applying filters: {e}")
     print("[filter] Continuing without filtering (all events included)")
