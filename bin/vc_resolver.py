@@ -1308,3 +1308,457 @@ def channels():
             con.close()
         except Exception:
             pass
+@app.get(
+    "/setupfilters",
+    response_class=HTMLResponse,
+    tags=["admin"],
+    summary="Interactive helper to build FILTER_* environment snippets",
+)
+def setup_filters_helper():
+    """Interactive helper that uses /filters/json to build FILTER_* env snippets.
+
+    This is a read-only guide: it does NOT change your running config. It just
+    shows copy/paste examples for docker-compose or Portainer.
+    """
+    html = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ESPN4CC4C - Filter Setup Helper</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111827;
+      color: #e5e7eb;
+      padding: 24px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #38bdf8;
+      border-bottom: 2px solid #1f2937;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+    h2 {
+      color: #a5b4fc;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    .card {
+      background: #020617;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+    }
+    .small {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .section-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .flex {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .flex-col {
+      flex: 1 1 260px;
+    }
+    .option-list {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid #1f2937;
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #020617;
+      font-size: 13px;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .option-item label {
+      cursor: pointer;
+    }
+    a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      background: #020617;
+      color: #e5e7eb;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      padding: 12px;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .copy-btn {
+      background: #22c55e;
+      border: none;
+      color: #022c22;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: #16a34a;
+    }
+    .status {
+      font-size: 12px;
+      color: #a5b4fc;
+    }
+    .profile-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .profile-buttons button {
+      border-radius: 999px;
+      border: 1px solid #4b5563;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 12px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .profile-buttons button:hover {
+      background: #111827;
+    }
+    .toggle-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .toggle-row label {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>ESPN4CC4C - Filter Setup Helper</h1>
+
+  <div class="card">
+    <p class="small">
+      This page helps you generate <code>FILTER_*</code> environment variables for your
+      <code>docker-compose.yml</code> or Portainer stack.
+      <strong>Click the networks/leagues/sports you do NOT want in your guide</strong> and
+      we will build the appropriate <code>FILTER_EXCLUDE_*</code> lines for you.
+    </p>
+    <p class="small">
+      It does not change anything automatically. After you update your stack and restart
+      the container, open <code>/out/filteraudit.html</code> to confirm the filters took effect.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Quick profiles</div>
+    <p class="small">
+      These are common starting points. They simply toggle the checkboxes below:
+      <br>- <strong>No filtering</strong>: show everything ESPN4CC4C finds.
+      <br>- <strong>Clean but broad</strong>: hide NCAAW / women's college, Spanish feeds, and replays.
+      <br>- <strong>ESPN+ + ESPN3 (no linear dupes)</strong>: keep ESPN+ and ESPN3 while excluding the main linear ESPN channels (ESPN, ESPN2, ESPNU, ESPN News, ESPN Deportes, SEC, ACC, etc.).
+    </p>
+    <div class="profile-buttons">
+      <button type="button" onclick="applyProfile('none')">No filtering</button>
+      <button type="button" onclick="applyProfile('clean')">Clean but broad</button>
+      <button type="button" onclick="applyProfile('nodupes')">ESPN+ + ESPN3 (no linear dupes)</button>
+    </div>
+  </div>
+
+  <h2>1. Choose what to exclude from your guide</h2>
+  <div class="card">
+    <p class="small">
+      Check the items you <strong>do not want</strong>. They will be turned into
+      <code>FILTER_EXCLUDE_*</code> values.
+    </p>
+    <div class="flex">
+      <div class="flex-col">
+        <div class="section-title">Networks</div>
+        <div id="networksContainer" class="option-list small">
+          <div class="small">Loading networks...</div>
+        </div>
+      </div>
+      <div class="flex-col">
+        <div class="section-title">Leagues</div>
+        <div id="leaguesContainer" class="option-list small">
+          <div class="small">Loading leagues...</div>
+        </div>
+      </div>
+      <div class="flex-col">
+        <div class="section-title">Sports</div>
+        <div id="sportsContainer" class="option-list small">
+          <div class="small">Loading sports...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex" style="margin-top: 16px;">
+      <div class="flex-col">
+        <div class="section-title">Event types (advanced)</div>
+        <div id="eventTypesContainer" class="option-list small">
+          <div class="small">Loading event types...</div>
+        </div>
+        <p class="small" style="margin-top:6px;">
+          Most users can ignore event types. Replays are usually better controlled via
+          <code>FILTER_EXCLUDE_REAIR=true</code> below.
+        </p>
+      </div>
+
+      <div class="flex-col">
+        <div class="section-title">Other options</div>
+        <div class="toggle-row">
+          <label><input type="checkbox" id="hideEs"> Hide Spanish (FILTER_EXCLUDE_LANGUAGES=es)</label>
+          <label><input type="checkbox" id="hideReair" checked> Hide re-airs (FILTER_EXCLUDE_REAIR=true)</label>
+          <label><input type="checkbox" id="caseInsensitive" checked> Case-insensitive matching</label>
+          <label><input type="checkbox" id="partialLeagueMatch" checked> Partial league match (NCAAW / NCAA Women's)</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. Copy the suggested environment block</h2>
+  <div class="card">
+    <p class="small">
+      Paste this under the <code>environment:</code> section for the <code>espn4cc4c</code> service
+      in your compose file or Portainer stack.
+    </p>
+    <textarea id="configPreview" spellcheck="false"></textarea>
+    <div class="actions">
+      <button class="copy-btn" type="button" onclick="copySnippet()">Copy to clipboard</button>
+      <span class="status" id="copyStatus"></span>
+    </div>
+    <p class="small" style="margin-top:10px;">
+      After updating your stack and restarting the container, open
+      <code>/out/filteraudit.html</code> to verify the leagues, languages, and re-airs
+      match your expectations.
+    </p>
+  </div>
+
+  <h2>3. Helpful links</h2>
+  <div class="card">
+    <p class="small">
+      • Filter options from your current DB: <a href="/filters" target="_blank">/filters</a><br>
+      • JSON filter options: <a href="/filters/json" target="_blank">/filters/json</a><br>
+      • Filter audit report: <a href="/out/filteraudit.html" target="_blank">/out/filteraudit.html</a><br>
+    </p>
+  </div>
+
+  <script>
+    var filterState = { data: null };
+
+    function renderOptions(list, containerId, kind) {
+      var container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = "";
+      if (!list || list.length === 0) {
+        container.innerHTML = '<div class="small">No data found in current DB.</div>';
+        return;
+      }
+      for (var i = 0; i < list.length; i++) {
+        var item = list[i] || {};
+        var name = item.name || "";
+        var count = item.count || 0;
+        var safeName = String(name).replace(/"/g, '&quot;');
+
+        var wrap = document.createElement("div");
+        wrap.className = "option-item";
+        var id = kind + "_" + i;
+
+        var html = ''
+          + '<label>'
+          + '<input type="checkbox"'
+          + ' class="filter-checkbox"'
+          + ' data-kind="' + kind + '"'
+          + ' data-name="' + safeName + '"'
+          + ' id="' + id + '">'
+          + safeName + ' <span class="small">(' + count + ' events)</span>'
+          + '</label>';
+
+        wrap.innerHTML = html;
+        container.appendChild(wrap);
+      }
+    }
+
+    function buildSnippet() {
+      var checked = Array.prototype.slice.call(
+        document.querySelectorAll(".filter-checkbox:checked")
+      );
+      var byKind = {
+        network: [],
+        league: [],
+        sport: [],
+        event_type: []
+      };
+      checked.forEach(function(input) {
+        var kind = input.getAttribute("data-kind");
+        var name = input.getAttribute("data-name");
+        if (kind && name && byKind[kind]) {
+          byKind[kind].push(name);
+        }
+      });
+
+      var hideEs = document.getElementById("hideEs").checked;
+      var hideReair = document.getElementById("hideReair").checked;
+      var caseInsensitive = document.getElementById("caseInsensitive").checked;
+      var partialLeagueMatch = document.getElementById("partialLeagueMatch").checked;
+
+      var lines = [];
+      lines.push("environment:");
+      lines.push("  - FILTER_EXCLUDE_NETWORKS=" + (byKind.network.join(",") || ""));
+      lines.push("  - FILTER_EXCLUDE_LEAGUES=" + (byKind.league.join(",") || ""));
+      lines.push("  - FILTER_EXCLUDE_SPORTS=" + (byKind.sport.join(",") || ""));
+      lines.push("  - FILTER_EXCLUDE_EVENT_TYPES=" + (byKind.event_type.join(",") || ""));
+      lines.push("  - FILTER_EXCLUDE_LANGUAGES=" + (hideEs ? "es" : ""));
+      lines.push("  - FILTER_EXCLUDE_REAIR=" + (hideReair ? "true" : "false"));
+      lines.push("  - FILTER_CASE_INSENSITIVE=" + (caseInsensitive ? "true" : "false"));
+      lines.push("  - FILTER_PARTIAL_LEAGUE_MATCH=" + (partialLeagueMatch ? "true" : "false"));
+      lines.push("  - FILTER_REQUIRE_ESPN_PLUS=false");
+
+      var area = document.getElementById("configPreview");
+      if (area) {
+        area.value = lines.join('\\n');
+      }
+    }
+
+    function copySnippet() {
+      var area = document.getElementById("configPreview");
+      if (!area) return;
+      area.focus();
+      area.select();
+      try {
+        var ok = document.execCommand("copy");
+        var status = document.getElementById("copyStatus");
+        if (status) {
+          status.textContent = ok ? "Copied to clipboard" : "Unable to copy";
+          setTimeout(function() { status.textContent = ""; }, 1500);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function clearAllSelections() {
+      var boxes = document.querySelectorAll(".filter-checkbox");
+      Array.prototype.forEach.call(boxes, function(cb) {
+        cb.checked = false;
+      });
+      document.getElementById("hideEs").checked = false;
+      document.getElementById("hideReair").checked = true;
+      document.getElementById("caseInsensitive").checked = true;
+      document.getElementById("partialLeagueMatch").checked = true;
+    }
+
+    function setCheckedByKindAndNames(kind, names) {
+      var set = {};
+      for (var i = 0; i < names.length; i++) {
+        set[names[i]] = true;
+      }
+      var boxes = document.querySelectorAll('.filter-checkbox[data-kind="' + kind + '"]');
+      Array.prototype.forEach.call(boxes, function(cb) {
+        var name = cb.getAttribute("data-name");
+        cb.checked = !!set[name];
+      });
+    }
+
+    function applyProfile(profile) {
+      if (!filterState.data) {
+        return;
+      }
+      clearAllSelections();
+
+      if (profile === "none") {
+        // Show everything, only keep matching helpers on
+      } else if (profile === "clean") {
+        // Hide NCAAW, NCAA Women's Volleyball, Spanish, and re-airs
+        setCheckedByKindAndNames("league", ["NCAAW", "NCAA Women's Volleyball"]);
+        document.getElementById("hideEs").checked = true;
+        document.getElementById("hideReair").checked = true;
+      } else if (profile === "nodupes") {
+        // ESPN+ + ESPN3 (no linear dupes)
+        setCheckedByKindAndNames("network", [
+          "ESPN",
+          "ESPN2",
+          "ESPNU",
+          "ESPNews",
+          "ESPN Deportes",
+          "SEC Network",
+          "SEC Network +",
+          "ACCN",
+          "ACCNX",
+          "@ESPN",
+          "ESPN Unlimited"
+        ]);
+        // Optionally also filter women's / Spanish / re-airs
+        setCheckedByKindAndNames("league", ["NCAAW", "NCAA Women's Volleyball"]);
+        document.getElementById("hideEs").checked = true;
+        document.getElementById("hideReair").checked = true;
+      }
+
+      buildSnippet();
+    }
+
+    function initializeFromJson(data) {
+      filterState.data = data || {};
+      renderOptions(data.networks || [], "networksContainer", "network");
+      renderOptions(data.leagues || [], "leaguesContainer", "league");
+      renderOptions(data.sports || [], "sportsContainer", "sport");
+      renderOptions(data.event_types || [], "eventTypesContainer", "event_type");
+
+      var boxes = document.querySelectorAll(".filter-checkbox");
+      Array.prototype.forEach.call(boxes, function(cb) {
+        cb.addEventListener("change", buildSnippet);
+      });
+
+      document.getElementById("hideEs").addEventListener("change", buildSnippet);
+      document.getElementById("hideReair").addEventListener("change", buildSnippet);
+      document.getElementById("caseInsensitive").addEventListener("change", buildSnippet);
+      document.getElementById("partialLeagueMatch").addEventListener("change", buildSnippet);
+
+      buildSnippet();
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      fetch("/filters/json")
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          initializeFromJson(data);
+        })
+        .catch(function(err) {
+          console.error("Failed to load /filters/json", err);
+          var containers = ["networksContainer", "leaguesContainer", "sportsContainer", "eventTypesContainer"];
+          for (var i = 0; i < containers.length; i++) {
+            var el = document.getElementById(containers[i]);
+            if (el) {
+              el.innerHTML = '<div class="small">Error loading /filters/json - check logs.</div>';
+            }
+          }
+        });
+    });
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(html)

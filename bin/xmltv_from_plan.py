@@ -58,6 +58,8 @@ class ProgrammeRow:
     is_reair: Optional[int]
     content_kind: Optional[str]
     has_competition: Optional[int]
+    feed_name: Optional[str]
+    feed_type: Optional[str]
 
 
 
@@ -118,7 +120,9 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
         e.language             AS language,
         e.is_reair             AS is_reair,
         e.content_kind         AS content_kind,
-        e.has_competition      AS has_competition
+        e.has_competition      AS has_competition,
+        e.feed_name            AS feed_name,
+        e.feed_type            AS feed_type
     FROM plan_slot ps
     LEFT JOIN events e ON e.id = ps.event_id
     WHERE ps.plan_id = ?
@@ -151,6 +155,8 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
                 is_reair=r["is_reair"],
                 content_kind=r["content_kind"],
                 has_competition=r["has_competition"],
+                feed_name=r["feed_name"],
+                feed_type=r["feed_type"],
             )
         )
     return programmes
@@ -286,6 +292,10 @@ def build_programme_elements(
                 # Start with the title so we know what event this is
                 if title_text:
                     bits.append(title_text)
+
+                # Add feed name if present (e.g., "Bruins Broadcast", "Ducks Broadcast")
+                if p.feed_name:
+                    bits.append(p.feed_name)
 
                 if p.league_name:
                     bits.append(p.league_name)

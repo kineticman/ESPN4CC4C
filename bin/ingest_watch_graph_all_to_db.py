@@ -80,6 +80,8 @@ query Airings(
   ) {
     id airingId simulcastAiringId name shortName type
     startDateTime endDateTime
+    feedName
+    feedType
     network { id name shortName }
     league  { id name abbreviation }
     sport   { id name abbreviation }
@@ -181,6 +183,8 @@ def migrate_schema(conn: sqlite3.Connection):
         "category_name": "TEXT",
         "subcategory_name": "TEXT",
         "has_competition": "INTEGER",
+        "feed_name": "TEXT",
+        "feed_type": "TEXT",
     }
 
     # Add missing columns
@@ -224,6 +228,8 @@ def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
         "category_name",
         "subcategory_name",
         "has_competition",
+        "feed_name",
+        "feed_type",
     )
     vals = [row.get(k) for k in cols]
     placeholders = ",".join(["?"] * len(cols))
@@ -395,6 +401,8 @@ def main():
                         "category_name": category_name,
                         "subcategory_name": subcategory_name,
                         "has_competition": has_competition,
+                        "feed_name": a.get("feedName"),
+                        "feed_type": a.get("feedType"),
                     },
                 )
                 replace_feeds(conn, eid, [espn_player_url(a)])

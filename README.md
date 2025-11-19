@@ -2,25 +2,27 @@
 
 Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all in one Docker service.
 
-> **Baseline:** v5.1.x (2025‑11‑12+) — prebuilt image with cron & tzdata; default onboarding = clone → `docker compose up`.
+> **Baseline:** v5.1.x (2025-11-12+) — prebuilt image with cron & tzdata; default onboarding = clone → `docker compose up`.
 
 ---
 
 ## 🆕 What’s new (v5.1.x+)
 
-- **Compose‑only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
-- **Built‑in cron**: auto refresh at **08:05 / 14:05 / 20:05**; weekly **VACUUM** Sun **03:10**.
-- **Safer compose**: init‑enabled, graceful stop, `${PORT}`‑aware healthcheck, and log rotation.
+- **Compose-only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
+- **Built-in cron**: auto refresh at **08:05 / 14:05 / 20:05**; weekly **VACUUM** Sun **03:10**.
+- **Safer compose**: init-enabled, graceful stop, `${PORT}`-aware healthcheck, and log rotation.
 - **Environment variable filtering** ⭐ **NEW**: Configure all filters via env vars in docker-compose.yml (no more INI file confusion!)
   - 16 filter variables covering networks, sports, leagues, languages, ESPN+, PPV, replays, and more
   - Priority: **Env Vars > filters.ini > Defaults**
   - See filtering section below for examples
 - **Filtering workflow**: `filters.ini` still supported as fallback, plus `/whatson` views to confirm results fast.
+- **Filter helper UI** ⭐ **NEW**: `/setupfilters` and `/filters/json` let you inspect your current DB (networks, sports, leagues, packages) and build filter snippets without guessing values.
 - **Improved XMLTV**:
   - Adds an internal `content_kind` classifier (`sports_event` vs `sports_show` vs `other`) based on ESPN Watch Graph structure.
-  - Exposes that to Channels as richer categories (e.g., **Sports** vs **Sports Talk**) and adds an **ESPN4CC4C** category tag for both sports and non‑sports events (not placeholders).
-- **Experimental extra M3U for Channels‑4‑Chrome**:
-  - Still writes the original Channels‑friendly M3U: `/out/playlist.m3u`.
+  - Exposes that to Channels as richer categories (e.g., **Sports** vs **Sports Talk**) and adds an **ESPN4CC4C** category tag for both sports and non-sports events (not placeholders).
+- **Multi-feed games**: NHL/NBA home & away feeds are kept as separate entries but annotated in the guide description (when data is available) so you can tell which broadcast you're tuning.
+- **Experimental extra M3U for Channels-4-Chrome**:
+  - Still writes the original Channels-friendly M3U: `/out/playlist.m3u`.
   - Also writes `/out/playlist.ch4c.m3u` using plain `http://` URLs, controlled by `CH4C_HOST` / `CH4C_PORT` env vars.
   - Lets you point CH4C at the `.ch4c.m3u` while leaving Channels DVR on the standard M3U.
 
@@ -52,7 +54,7 @@ services:
       - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.0.2.10:8094}
       - CC_HOST=${CC_HOST:-192.0.2.10}
       - CC_PORT=${CC_PORT:-5589}
-      # Optional: Channels‑4‑Chrome (CH4C) bridge for http:// playlists
+      # Optional: Channels-4-Chrome (CH4C) bridge for http:// playlists
       - CH4C_HOST=${CH4C_HOST:-127.0.0.1}
       - CH4C_PORT=${CH4C_PORT:-2442}
       - PORT=${PORT:-8094}
@@ -108,7 +110,7 @@ services:
 6) **Sanity checks (browser or curl)**
 ```text
 http://<YOUR-IP>:8094/health             → {"ok": true}
-http://<YOUR-IP>:8094/epg.xml        → XMLTV guide
+http://<YOUR-IP>:8094/epg.xml            → XMLTV guide
 http://<YOUR-IP>:8094/playlist.m3u       → M3U with eplus1–eplus40 (Channels)
 http://<YOUR-IP>:8094/playlist.ch4c.m3u  → experimental M3U for CH4C
 http://<YOUR-IP>:8094/whatson_all        → quick view of all lanes
@@ -142,9 +144,25 @@ curl -fsS "http://<YOUR-IP>:8094/playlist.m3u" | head -n 20
 
 - **XMLTV:** `http://<YOUR-IP>:8094/out/epg.xml`
 - **M3U (Channels DVR):** `http://<YOUR-IP>:8094/playlist.m3u`
-- **M3U (CH4C, experimental):** `http://<YOUR-IP>:8094/out/playlist.ch4c.m3u` (for Channels‑4‑Chrome or other http‑only launchers)
+- **M3U (CH4C, experimental):** `http://<YOUR-IP>:8094/out/playlist.ch4c.m3u` (for Channels-4-Chrome or other http-only launchers)
 
 You’ll see **ESPN+ EPlus 1…40** with guide data.
+
+---
+
+## 🏒 Multi-feed games (NHL / NBA home & away broadcasts)
+
+Some ESPN+ games – especially **NHL** and **NBA** – ship with more than one feed for the same event (home broadcast, away broadcast, sometimes an alt or national feed). On ESPN's site/app you pick the feed from a dialog; in a traditional guide this can look like “duplicate” entries.
+
+ESPN4CC4C keeps all available feeds, but **labels them so you can tell which is which**:
+
+- Each feed becomes its own `<programme>` entry in `epg.xml`.
+- When ESPN exposes feed metadata, the XMLTV `<desc>` is annotated with a label, for example:
+  - `Bruins vs Ducks • Bruins broadcast`
+  - `Bruins vs Ducks • Ducks broadcast`
+- In Channels DVR, you'll see two entries with the same title and time, but different descriptions, so you can choose the right home/away feed without trial-and-error.
+
+If no reliable feed label is available for a given game, the event is left unlabelled rather than guessing.
 
 ---
 
@@ -210,7 +228,33 @@ environment:
 | `FILTER_CASE_INSENSITIVE` | `true` | Case-insensitive matching |
 | `FILTER_PARTIAL_LEAGUE_MATCH` | `true` | Allow partial league name matching |
 
-### Discovery Tool: What content is available?
+### Filters helper UI: `/setupfilters`
+
+For most users, the easiest way to see what you *can* filter on is the built-in helper page:
+
+```text
+http://<YOUR-IP>:8094/setupfilters
+```
+
+This page:
+
+- Scans your current `eplus_vc.sqlite3` database.
+- Shows distinct values for things like:
+  - Networks (`network`, `network_id`, `network_short`)
+  - Sports and leagues (`sport`, `sport_abbr`, `league_name`, `league_abbr`)
+  - Categories (`content_kind`, `category_name`, `subcategory_name`)
+  - Packages (`packages`, e.g. `ESPN_PLUS`, `ESPN3`, etc.)
+- Generates ready-to-copy snippets you can paste into `filters.ini` or translate into filter environment variables.
+
+The same data is also exposed as JSON:
+
+```text
+http://<YOUR-IP>:8094/filters/json
+```
+
+This is useful if you want to script checks or build your own tooling on top of ESPN4CC4C.
+
+### CLI Discovery Tool: What content is available?
 
 Generate a report showing all networks, sports, and leagues with event counts:
 
@@ -248,16 +292,18 @@ You'll see a snapshot of all 40 lanes reflecting your active filters.
 
 ---
 
-## 🔎 API Cheat‑Sheet
+## 🔎 API Cheat-Sheet
 
 - `GET /health` → service OK
 - `GET /whatson_all?format=json|txt` → all lanes at a glance
 - `GET /whatson/{lane}?format=json|txt` → a single lane
-- `GET /deeplink/{lane}` → when available, returns a `sportscenter://…` URL (handy for ADBTuner / deep‑link launchers)
+- `GET /setupfilters` → interactive page showing available networks/sports/leagues/packages and sample filter snippets
+- `GET /filters/json` → same filter metadata as JSON for scripting/automation
+- `GET /deeplink/{lane}` → when available, returns a `sportscenter://…` URL (handy for ADBTuner / deep-link launchers)
 - Outputs for Channels:
   - `GET /out/epg.xml` → XMLTV
   - `GET /out/playlist.m3u` → standard M3U (Channels DVR)
-  - `GET /out/playlist.ch4c.m3u` → experimental M3U (CH4C/http‑only)
+  - `GET /out/playlist.ch4c.m3u` → experimental M3U (CH4C/http-only)
 
 ---
 
@@ -275,9 +321,9 @@ docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
 docker compose logs -f --tail=200
 ```
 
-**First‑run note**
+**First-run note**
 
-If you see `logs/cron_refresh.log` missing, it’s normal before the first cron or manual refresh. Run the command above once and re‑check.
+If you see `logs/cron_refresh.log` missing, it’s normal before the first cron or manual refresh. Run the command above once and re-check.
 
 ---
 
@@ -293,8 +339,6 @@ If you see `logs/cron_refresh.log` missing, it’s normal before the first cron 
 
 ## Security & Policies
 
-- No proxies for ESPN endpoints.
-- GET‑only for checks (avoid HEAD).
 - Don’t expose the service publicly; it’s designed for trusted LAN use.
 
 ---
