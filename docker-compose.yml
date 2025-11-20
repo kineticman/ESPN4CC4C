@@ -5,7 +5,7 @@ services:
     # Docker container home for this project with setup instructions:
     #   https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
     # Uncomment `build: .` if you want to build locally instead of pulling GHCR.
-    # build: .
+#    build: .
     image: ghcr.io/kineticman/espn4cc4c:${TAG:-latest}
     container_name: espn4cc4c
     init: true                    # Proper signal handling for graceful shutdown
@@ -32,38 +32,38 @@ services:
       - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
       - VC_M3U_PATH=${VC_M3U_PATH:-/app/out/playlist.m3u}
       - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
-      
+
       # === EVENT FILTERING (Optional) ===
       # Uncomment any filters below to customize your content
       # For full documentation, see: https://github.com/kineticman/ESPN4CC4C#filtering
-      
+
       # Network filtering examples:
       # - FILTER_EXCLUDE_NETWORKS=ACCN,ESPN,ESPN2,ESPNDeportes,ESPNU,ESPNEWS
       # - FILTER_ENABLED_NETWORKS=ESPN+,SEC Network,ACC Network
-      
+
       # Sport filtering examples:
       # - FILTER_ENABLED_SPORTS=Football,Basketball,Baseball,Hockey
       # - FILTER_EXCLUDE_SPORTS=Golf,Tennis,Cricket
-      
+
       # League filtering examples:
       # - FILTER_ENABLED_LEAGUES=NFL,NBA,MLB,NHL
       # - FILTER_ENABLED_LEAGUES=NCAA
       # - FILTER_EXCLUDE_LEAGUES=MLS,WNBA
-      
+
       # ESPN+ and PPV filtering:
       # - FILTER_REQUIRE_ESPN_PLUS=true     # Only include ESPN+ content
       # - FILTER_EXCLUDE_PPV=true           # Exclude Pay-Per-View events
       # - FILTER_EXCLUDE_REAIR=true         # Exclude replays/re-airs
       # - FILTER_EXCLUDE_NO_SPORT=true      # Exclude studio shows/non-sport content
-      
+
       # Language filtering:
       # - FILTER_ENABLED_LANGUAGES=en       # English only
       # - FILTER_EXCLUDE_LANGUAGES=es       # Exclude Spanish content
-      
+
       # Advanced options:
       # - FILTER_CASE_INSENSITIVE=true      # Default: true
       # - FILTER_PARTIAL_LEAGUE_MATCH=true  # Default: true (NCAA matches NCAA Football, etc.)
-      
+
     volumes:
       - ${HOST_DIR:-.}/data:/app/data
       - ${HOST_DIR:-.}/out:/app/out
