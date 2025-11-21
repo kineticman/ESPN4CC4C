@@ -4,7 +4,7 @@ ESPN Watch Graph -> v2 DB (events + feeds), matching your PowerShell/v1 request 
 
 - URL: https://watch.graph.api.espn.com/api?apiKey=...&features=pbov7
 - POST JSON: { query, variables, operationName:"Airings" }
-- Vars: countryCode=US, deviceType=DESKTOP, tz=America/New_York, day=YYYY-MM-DD, limit=2000
+- Vars: countryCode=US, deviceType: DESKTOP, tz: America/New_York, day: YYYY-MM-DD, limit: 2000
 - Headers: Accept/Origin/Referer/User-Agent like a browser
 - Primary feed = ESPN player page https://www.espn.com/watch/player/_/id/<id|airingId|simulcastAiringId>
 
@@ -90,6 +90,8 @@ query Airings(
     subcategory { name }
     competition { id }
     image { url }
+    purchaseImage { url }
+    program { id code categoryCode isStudio }
     language
     isReAir
   }
@@ -126,6 +128,7 @@ def ensure_schema(conn: sqlite3.Connection):
       subtitle  TEXT,
       summary   TEXT,
       image     TEXT,
+      purchase_image TEXT,
       network TEXT,
       network_id TEXT,
       network_short TEXT,
@@ -140,6 +143,10 @@ def ensure_schema(conn: sqlite3.Connection):
       simulcast_airing_id TEXT,
       language TEXT,
       is_reair INTEGER,
+      is_studio INTEGER,
+      program_id TEXT,
+      program_code TEXT,
+      program_category_code TEXT,
       content_kind TEXT,
       category_name TEXT,
       subcategory_name TEXT,
@@ -179,6 +186,11 @@ def migrate_schema(conn: sqlite3.Connection):
         "simulcast_airing_id": "TEXT",
         "language": "TEXT",
         "is_reair": "INTEGER",
+        "is_studio": "INTEGER",
+        "program_id": "TEXT",
+        "program_code": "TEXT",
+        "program_category_code": "TEXT",
+        "purchase_image": "TEXT",
         "content_kind": "TEXT",
         "category_name": "TEXT",
         "subcategory_name": "TEXT",
@@ -210,6 +222,7 @@ def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
         "subtitle",
         "summary",
         "image",
+        "purchase_image",
         "network",
         "network_id",
         "network_short",
@@ -224,6 +237,10 @@ def upsert_event(conn: sqlite3.Connection, row: Dict[str, Any]):
         "simulcast_airing_id",
         "language",
         "is_reair",
+        "is_studio",
+        "program_id",
+        "program_code",
+        "program_category_code",
         "content_kind",
         "category_name",
         "subcategory_name",
@@ -312,7 +329,24 @@ def main():
             airings = post_airings(day_iso, args.tz)
             for a in airings:
                 # Basic event info
-                title = a.get("shortName") or a.get("name")
+                # Use ESPN's long name as title when available, and keep the shortName
+                # as a sub-title for richer XMLTV output.
+                name_long = a.get("name") or None
+                name_short = a.get("shortName") or None
+
+                if name_long and name_short and name_long != name_short:
+                    title = name_long
+                    subtitle = name_short
+                elif name_long:
+                    title = name_long
+                    subtitle = None
+                elif name_short:
+                    title = name_short
+                    subtitle = None
+                else:
+                    title = None
+                    subtitle = None
+
                 start = a.get("startDateTime")
                 stop = a.get("endDateTime")
                 base_id = str(
@@ -333,17 +367,44 @@ def main():
                 category_obj = a.get("category") or {}
                 subcategory_obj = a.get("subcategory") or {}
                 competition_obj = a.get("competition") or {}
+                program_obj = a.get("program") or {}
 
                 # Convert packages to JSON string and extract package names
                 package_names = [p.get("name") for p in packages_list if p.get("name")]
                 packages_str = json.dumps(package_names) if package_names else None
 
                 # Extract category names
-                category_name = category_obj.get("name") if isinstance(category_obj, dict) else None
-                subcategory_name = subcategory_obj.get("name") if isinstance(subcategory_obj, dict) else None
-                
+                category_name = (
+                    category_obj.get("name") if isinstance(category_obj, dict) else None
+                )
+                subcategory_name = (
+                    subcategory_obj.get("name")
+                    if isinstance(subcategory_obj, dict)
+                    else None
+                )
+
                 # Check if this has a competition (indicates actual sports event vs show)
-                has_competition = 1 if (competition_obj and competition_obj.get("id")) else 0
+                has_competition = (
+                    1 if (competition_obj and competition_obj.get("id")) else 0
+                )
+
+                # Extract program info to determine if it's a studio show
+                is_studio = (
+                    1
+                    if (isinstance(program_obj, dict) and program_obj.get("isStudio"))
+                    else 0
+                )
+                program_id = (
+                    program_obj.get("id") if isinstance(program_obj, dict) else None
+                )
+                program_code = (
+                    program_obj.get("code") if isinstance(program_obj, dict) else None
+                )
+                program_category_code = (
+                    program_obj.get("categoryCode")
+                    if isinstance(program_obj, dict)
+                    else None
+                )
 
                 # Get network name, but set to NULL if it's actually a package
                 # ESPN's API sometimes returns "ESPN+" as the network when it's really just a package
@@ -359,10 +420,17 @@ def main():
                     if not is_package:
                         network_name = raw_network_name
 
-                # Extract image URL from nested image object
+                # Extract image URLs from nested image objects
                 image_obj = a.get("image") or {}
                 image_url = (
                     image_obj.get("url") if isinstance(image_obj, dict) else None
+                )
+
+                purchase_image_obj = a.get("purchaseImage") or {}
+                purchase_image_url = (
+                    purchase_image_obj.get("url")
+                    if isinstance(purchase_image_obj, dict)
+                    else None
                 )
 
                 # Get language (e.g., "en", "es", etc.)
@@ -380,12 +448,15 @@ def main():
                         "stop_utc": stop,
                         "title": title,
                         "sport": sport_obj.get("name"),
-                        "subtitle": None,
-                        "summary": None,  # Don't use league name as summary - it's redundant
+                        "subtitle": subtitle,
+                        "summary": None,  # Reserved for real blurbs if ESPN ever exposes them
                         "image": image_url,
+                        "purchase_image": purchase_image_url,
                         "network": network_name,  # Use cleaned network (NULL if it's a package)
                         "network_id": network_obj.get("id"),
-                        "network_short": network_obj.get("shortName") if network_name else None,
+                        "network_short": network_obj.get("shortName")
+                        if network_name
+                        else None,
                         "league_name": league_obj.get("name"),
                         "league_id": league_obj.get("id"),
                         "league_abbr": league_obj.get("abbreviation"),
@@ -397,6 +468,10 @@ def main():
                         "simulcast_airing_id": a.get("simulcastAiringId"),
                         "language": language,
                         "is_reair": is_reair,
+                        "is_studio": is_studio,
+                        "program_id": program_id,
+                        "program_code": program_code,
+                        "program_category_code": program_category_code,
                         "content_kind": None,  # Not in API response, keep NULL for now
                         "category_name": category_name,
                         "subcategory_name": subcategory_name,

@@ -217,6 +217,60 @@ def uniq(seq: Iterable[str]) -> List[str]:
     return out
 
 
+
+
+def _append_unique_desc_part(bits: List[str], text: Optional[str]) -> None:
+    """Append text to bits if it's non-empty and not a near-duplicate.
+
+    We treat two strings as near-duplicates if:
+      * They are equal case-insensitively, OR
+      * One is a substring of the other (case-insensitive), OR
+      * Their token overlap (ignoring tiny words like "vs", "at") is high.
+    """
+    if not text:
+        return
+    t = text.strip()
+    if not t:
+        return
+
+    def _tokens(s: str) -> set:
+        # Normalize: lower, replace non-alnum with space, split
+        cleaned = []
+        for ch in s.lower():
+            cleaned.append(ch if ch.isalnum() else " ")
+        raw = "".join(cleaned).split()
+        # Drop very short/common connector words
+        stop = {"vs", "v", "at", "the", "and", "or"}
+        return {tok for tok in raw if len(tok) > 2 and tok not in stop}
+
+    t_low = t.lower()
+    t_tokens = _tokens(t)
+
+    for existing in bits:
+        e = existing.strip()
+        if not e:
+            continue
+        e_low = e.lower()
+
+        # Simple equality / substring checks
+        if t_low == e_low or t_low in e_low or e_low in t_low:
+            return
+
+        # Token overlap check
+        e_tokens = _tokens(e)
+        if e_tokens:
+            inter = t_tokens & e_tokens
+            # If the shorter string's tokens are mostly contained in the other,
+            # treat as duplicate (e.g. "Kraken vs. Blackhawks" vs
+            # "Seattle Kraken vs. Chicago Blackhawks").
+            min_len = min(len(t_tokens), len(e_tokens)) or 1
+            if len(inter) / min_len >= 0.7:
+                return
+
+    bits.append(t)
+
+
+
 def build_channel_elements(tv: ET.Element, channels: List[ChannelRow]) -> None:
     for ch in channels:
         ch_el = ET.SubElement(tv, "channel", id=str(ch.id))
@@ -291,32 +345,32 @@ def build_programme_elements(
 
                 # Start with the title so we know what event this is
                 if title_text:
-                    bits.append(title_text)
+                    _append_unique_desc_part(bits, title_text)
 
                 # Add feed name if present (e.g., "Bruins Broadcast", "Ducks Broadcast")
                 if p.feed_name:
-                    bits.append(p.feed_name)
+                    _append_unique_desc_part(bits, p.feed_name)
 
                 if p.league_name:
-                    bits.append(p.league_name)
+                    _append_unique_desc_part(bits, p.league_name)
 
                 if p.network:
-                    bits.append(p.network)
+                    _append_unique_desc_part(bits, p.network)
 
                 if p.sport and p.sport != p.league_name:
-                    bits.append(p.sport)
+                    _append_unique_desc_part(bits, p.sport)
 
                 # event_type is often "Regular Season", "Replay", etc.
                 # Explicitly *ignore* "UPCOMING" so it doesn't pollute the desc.
                 if p.event_type:
                     et = p.event_type.strip()
                     if et.upper() != "UPCOMING":
-                        bits.append(et)
+                        _append_unique_desc_part(bits, et)
 
-                # If we have a subtitle that's not just a repeat of the title,
-                # tack it on at the end.
-                if p.subtitle and p.subtitle != p.title:
-                    bits.append(p.subtitle)
+                # If we have a subtitle that's not just a repeat/substring of the title
+                # or any other part, tack it on at the end.
+                if p.subtitle:
+                    _append_unique_desc_part(bits, p.subtitle)
 
                 if bits:
                     desc_text = " • ".join(bits)
