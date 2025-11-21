@@ -2,14 +2,17 @@
 
 Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all in one Docker service.
 
-> **Baseline:** v5.1.x (2025-11-12+) — prebuilt image with cron & tzdata; default onboarding = clone → `docker compose up`.
+> **Baseline:** v5.1.x (2025-11-12+) — prebuilt image with an in-process scheduler (APScheduler) & tzdata; default onboarding = clone → `docker compose up`.
 
 ---
 
 ## 🆕 What’s new (v5.1.x+)
 
+- **Database maintenance dashboard** ⭐ **NEW**: `/admin/refresh` shows last refresh/VACUUM status, duration, and whether it was run manually or by the scheduler, with buttons to trigger a refresh or VACUUM immediately.
 - **Compose-only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
-- **Built-in cron**: auto refresh at **08:05 / 14:05 / 20:05**; weekly **VACUUM** Sun **03:10**.
+- **Built-in scheduler (APScheduler)**: runs inside the FastAPI app (no system cron needed) and automatically:
+  - refreshes the database at **08:05 / 14:05 / 20:05** every day
+  - runs a SQLite **VACUUM** on Sundays at **03:10**
 - **Safer compose**: init-enabled, graceful stop, `${PORT}`-aware healthcheck, and log rotation.
 - **Environment variable filtering** ⭐ **NEW**: Configure all filters via env vars in docker-compose.yml (no more INI file confusion!)
   - 16 filter variables covering networks, sports, leagues, languages, ESPN+, PPV, replays, and more
@@ -300,6 +303,9 @@ You'll see a snapshot of all 40 lanes reflecting your active filters.
 - `GET /setupfilters` → interactive page showing available networks/sports/leagues/packages and sample filter snippets
 - `GET /filters/json` → same filter metadata as JSON for scripting/automation
 - `GET /deeplink/{lane}` → when available, returns a `sportscenter://…` URL (handy for ADBTuner / deep-link launchers)
+- `GET /admin/refresh` → database maintenance dashboard (last refresh/VACUUM, scheduler status, manual controls)
+- `POST /admin/refresh/trigger` → trigger a database refresh immediately (same thing the dashboard button calls)
+- `POST /admin/vacuum/trigger` → trigger a SQLite VACUUM immediately
 - Outputs for Channels:
   - `GET /out/epg.xml` → XMLTV
   - `GET /out/playlist.m3u` → standard M3U (Channels DVR)
@@ -309,10 +315,23 @@ You'll see a snapshot of all 40 lanes reflecting your active filters.
 
 ## 🧰 Operations
 
-**Manual refresh now**
+**Manual refresh (web, recommended)**
+
+- Open: `http://<YOUR-IP>:8094/admin/refresh`
+- Click **“🔄 Trigger Refresh Now”** to run the full ESPN+ ingest/plan/XMLTV/M3U pipeline in the background.
+- The page will show status, last run time, duration, and any error message.
+
+**Manual VACUUM (web)**
+
+- On the same `/admin/refresh` page, click **“🗄️ Run VACUUM Now”** to run `PRAGMA wal_checkpoint(TRUNCATE); VACUUM;` against the SQLite DB.
+- Useful after a lot of churn or big filter changes to keep the DB compact.
+
+**Manual refresh (CLI, optional)**
+
+If you prefer the CLI, you can still run the refresh script inside the container. This bypasses the pretty dashboard but performs the same work:
 
 ```bash
-docker compose exec espn4cc4c bash -lc "/app/bin/refresh_in_container.sh"
+docker compose exec espn4cc4c bash -lc "python3 /app/bin/refresh_in_container.py"
 ```
 
 **View logs**
@@ -323,7 +342,12 @@ docker compose logs -f --tail=200
 
 **First-run note**
 
-If you see `logs/cron_refresh.log` missing, it’s normal before the first cron or manual refresh. Run the command above once and re-check.
+On a brand-new install, the scheduler won’t show any “last run” timestamps until either:
+
+- the next scheduled refresh/VACUUM window hits, or
+- you trigger them once via `/admin/refresh`.
+
+If in doubt, open `/admin/refresh` and hit **“🔄 Trigger Refresh Now”** to seed the DB and confirm everything is working.
 
 ---
 

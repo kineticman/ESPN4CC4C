@@ -4,21 +4,200 @@ import json
 import os
 import sqlite3
 import traceback
+import logging
+import subprocess
 from typing import Optional
 from urllib.parse import quote
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# --- Scheduler functions ---
+def run_refresh(source: str = "auto"):
+    """Run the database refresh script"""
+    import time
+    global last_refresh_info
+
+    start_time = time.time()
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+
+    # record overall + per-source timestamps
+    last_refresh_info["last_run"] = now_iso
+    last_refresh_info["last_status"] = "running"
+    last_refresh_info["last_duration"] = None
+    last_refresh_info["last_error"] = None
+    last_refresh_info["last_source"] = source
+
+    if source == "manual":
+        last_refresh_info["last_manual_run"] = now_iso
+    else:
+        last_refresh_info["last_auto_run"] = now_iso
+
+    try:
+        logger.info("Starting scheduled database refresh...")
+        result = subprocess.run(
+            ["python3", "/app/bin/refresh_in_container.py"],
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+
+        duration = time.time() - start_time
+        last_refresh_info["last_duration"] = f"{duration:.1f}s"
+
+        if result.returncode == 0:
+            logger.info("Database refresh completed successfully")
+            last_refresh_info["last_status"] = "success"
+        else:
+            logger.error(f"Database refresh failed with code {result.returncode}")
+            last_refresh_info["last_status"] = "failed"
+            last_refresh_info["last_error"] = result.stderr[:500] if result.stderr else "Unknown error"
+    except subprocess.TimeoutExpired:
+        logger.error("Database refresh timed out after 1 hour")
+        last_refresh_info["last_status"] = "timeout"
+        last_refresh_info["last_error"] = "Refresh timed out after 1 hour"
+    except Exception as e:
+        logger.error(f"Error running database refresh: {e}")
+        last_refresh_info["last_status"] = "error"
+        last_refresh_info["last_error"] = str(e)
+
+def run_vacuum(source: str = "auto"):
+    """Run the weekly VACUUM operation"""
+    import time
+    global last_vacuum_info
+    start_time = time.time()
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+
+    last_vacuum_info["last_run"] = now_iso
+    last_vacuum_info["last_status"] = "running"
+    last_vacuum_info["last_duration"] = None
+    last_vacuum_info["last_error"] = None
+    last_vacuum_info["last_source"] = source
+
+    if source == "manual":
+        last_vacuum_info["last_manual_run"] = now_iso
+    else:
+        last_vacuum_info["last_auto_run"] = now_iso
+
+    try:
+        logger.info("Starting scheduled VACUUM...")
+        db_path = os.getenv("DB", "/app/data/eplus_vc.sqlite3")
+        result = subprocess.run(
+            ["sqlite3", db_path, "PRAGMA wal_checkpoint(TRUNCATE); VACUUM;"],
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+
+        duration = time.time() - start_time
+        last_vacuum_info["last_duration"] = f"{duration:.1f}s"
+
+        if result.returncode == 0:
+            logger.info("VACUUM completed successfully")
+            last_vacuum_info["last_status"] = "success"
+            last_vacuum_info["last_error"] = None
+        else:
+            logger.error("VACUUM failed")
+            last_vacuum_info["last_status"] = "failed"
+            last_vacuum_info["last_error"] = result.stderr[:500] if result.stderr else "VACUUM failed"
+    except subprocess.TimeoutExpired:
+        logger.error("VACUUM timed out after 1 hour")
+        last_vacuum_info["last_status"] = "timeout"
+        last_vacuum_info["last_error"] = "VACUUM timed out after 1 hour"
+    except Exception as e:
+        logger.error(f"Error running VACUUM: {e}")
+        last_vacuum_info["last_status"] = "error"
+        last_vacuum_info["last_error"] = str(e)
+
+
+
+def _get_db_stats():
+    """Return (db_path, size_mb, freelist_count) for the main DB."""
+    db_path = os.getenv("DB", "/app/data/eplus_vc.sqlite3")
+    size_bytes = 0
+    try:
+        if os.path.exists(db_path):
+            size_bytes = os.path.getsize(db_path)
+    except OSError as exc:
+        logger.warning("Unable to stat DB file %s: %s", db_path, exc)
+    size_mb = size_bytes / (1024 * 1024) if size_bytes else 0.0
+
+    freelist = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.execute("PRAGMA freelist_count;")
+        row = cur.fetchone()
+        if row is not None:
+            freelist = row[0]
+        conn.close()
+    except Exception as exc:
+        logger.warning("Unable to query freelist_count: %s", exc)
+    return db_path, size_mb, freelist
+
+def start_scheduler() -> BackgroundScheduler:
+    """Initialize and start the background scheduler"""
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        run_refresh,
+        CronTrigger(hour='8,14,20', minute=5),
+        id='refresh_job',
+        kwargs={"source": "auto"},
+    )
+    scheduler.add_job(
+        run_vacuum,
+        CronTrigger(day_of_week='sun', hour=3, minute=10),
+        id='vacuum_job',
+        kwargs={"source": "auto"},
+    )
+    scheduler.start()
+    logger.info("Scheduler started: refresh at 08:05/14:05/20:05, vacuum Sunday 03:10")
+    return scheduler
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = start_scheduler()
+    yield
+    scheduler.shutdown()
+    logger.info("Scheduler stopped")
 
 # --- ChromeCapture config ---
 CC_HOST = os.getenv("CC_HOST")  # defaults to resolver host if not set
-CC_PORT = os.getenv("CC_PORT", "5589")  # default 5589
-M3U_GROUP_TITLE = os.getenv("M3U_GROUP_TITLE", "ESPN+ VC")
-VC_RESOLVER_BASE_URL = os.getenv("VC_RESOLVER_BASE_URL")  # optional, preferred if set
 
+# Global variable to track last refresh stats
+last_refresh_info = {
+    "last_run": None,
+    "last_status": None,
+    "last_duration": None,
+    "last_error": None,
+    "last_source": None,
+    "last_manual_run": None,
+    "last_auto_run": None,
+}
 
+# Global variable to track last VACUUM stats
+last_vacuum_info = {
+    "last_run": None,
+    "last_status": None,
+    "last_duration": None,
+    "last_error": None,
+    "last_source": None,
+    "last_manual_run": None,
+    "last_auto_run": None,
+}
+
+# Updated run_refresh function with stat tracking
 def _derive_host_from_base(vc_base: str) -> str:
     # vc_base like "http://192.168.86.72:8094"
     return vc_base.split("://", 1)[1].split("/", 1)[0].split(":")[0]
@@ -74,7 +253,8 @@ try:
 except Exception:
     CFG_SLATE_URL = ""
 
-app = FastAPI()
+
+app = FastAPI(lifespan=lifespan)
 
 
 # === Middlewares to fill in slate on /vc/*/debug and redirect /vc/<lane> 404 to slate ===
@@ -1762,3 +1942,499 @@ def setup_filters_helper():
 </body>
 </html>"""
     return HTMLResponse(html)
+
+
+# ============================================================================
+# ADMIN DASHBOARD ROUTES
+# ============================================================================
+
+
+@app.get("/admin/refresh")
+async def admin_dashboard():
+    """Admin dashboard with refresh + vacuum stats and manual controls."""
+    # Normalize refresh status
+    status_raw = last_refresh_info.get("last_status") or "unknown"
+    has_run = bool(last_refresh_info.get("last_run"))
+
+    if not has_run:
+        status_label = "NEVER RUN"
+    else:
+        status_label = status_raw.upper()
+
+    if status_raw in {"success", "failed", "running", "timeout", "error"}:
+        status_class = status_raw
+    else:
+        status_class = "unknown"
+
+    raw_last_run = last_refresh_info.get("last_run")
+    if raw_last_run:
+        last_run_text = f"{raw_last_run} (UTC)"
+    else:
+        last_run_text = "Never"
+
+    last_duration_text = last_refresh_info.get("last_duration") or "N/A"
+    last_error = last_refresh_info.get("last_error")
+
+    raw_manual = last_refresh_info.get("last_manual_run")
+    if raw_manual:
+        last_manual_text = f"{raw_manual} (UTC)"
+    else:
+        last_manual_text = "Never"
+
+    raw_auto = last_refresh_info.get("last_auto_run")
+    if raw_auto:
+        last_auto_text = f"{raw_auto} (UTC)"
+    else:
+        last_auto_text = "Never"
+
+    # VACUUM status
+    vac_status_raw = last_vacuum_info.get("last_status") or "unknown"
+    vac_has_run = bool(last_vacuum_info.get("last_run"))
+
+    if not vac_has_run:
+        vac_status_label = "NEVER RUN"
+    else:
+        vac_status_label = vac_status_raw.upper()
+
+    if vac_status_raw in {"success", "failed", "running", "timeout", "error"}:
+        vac_status_class = vac_status_raw
+    else:
+        vac_status_class = "unknown"
+
+    raw_vac_last = last_vacuum_info.get("last_run")
+    if raw_vac_last:
+        vac_last_run_text = f"{raw_vac_last} (UTC)"
+    else:
+        vac_last_run_text = "Never"
+
+    vac_last_duration_text = last_vacuum_info.get("last_duration") or "N/A"
+    vac_last_error = last_vacuum_info.get("last_error")
+
+    raw_vac_manual = last_vacuum_info.get("last_manual_run")
+    if raw_vac_manual:
+        vac_last_manual_text = f"{raw_vac_manual} (UTC)"
+    else:
+        vac_last_manual_text = "Never"
+
+    raw_vac_auto = last_vacuum_info.get("last_auto_run")
+    if raw_vac_auto:
+        vac_last_auto_text = f"{raw_vac_auto} (UTC)"
+    else:
+        vac_last_auto_text = "Never"
+
+    # DB stats
+    db_path, db_size_mb, freelist = _get_db_stats()
+    db_size_text = f"{db_size_mb:.2f} MiB"
+    freelist_text = "Unknown" if freelist is None else str(freelist)
+
+    last_error_html = ""
+    if last_error:
+        last_error_html = f'<div class="error-box">{last_error}</div>'
+
+    vac_last_error_html = ""
+    if vac_last_error:
+        vac_last_error_html = f'<div class="error-box">{vac_last_error}</div>'
+
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESPN4CC4C Admin - Database Maintenance</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }}
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            color: #fff;
+            margin-bottom: 10px;
+        }}
+        .subtitle {{
+            color: #888;
+            margin-bottom: 30px;
+        }}
+        .card {{
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }}
+        .stat-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }}
+        .stat {{
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 3px solid #666;
+        }}
+        .stat.success {{ border-left-color: #4caf50; }}
+        .stat.failed {{ border-left-color: #f44336; }}
+        .stat.running {{ border-left-color: #2196f3; }}
+        .stat.timeout {{ border-left-color: #ff9800; }}
+        .stat.error {{ border-left-color: #e91e63; }}
+        .stat.unknown {{ border-left-color: #666; }}
+        .stat-label {{
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 5px;
+        }}
+        .stat-value {{
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #fff;
+        }}
+        .status-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .status-success {{ background: #4caf50; color: #fff; }}
+        .status-failed {{ background: #f44336; color: #fff; }}
+        .status-running {{ background: #2196f3; color: #fff; }}
+        .status-timeout {{ background: #ff9800; color: #000; }}
+        .status-error {{ background: #e91e63; color: #fff; }}
+        .status-unknown {{ background: #666; color: #fff; }}
+        .refresh-btn {{
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }}
+        .refresh-btn:hover {{
+            background: #1976d2;
+        }}
+        .refresh-btn:disabled {{
+            background: #555;
+            cursor: not-allowed;
+        }}
+        .schedule-list {{
+            list-style: none;
+        }}
+        .schedule-item {{
+            padding: 10px;
+            background: #252525;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+        }}
+        .error-box {{
+            background: #2a1515;
+            border: 1px solid #f44336;
+            border-radius: 6px;
+            padding: 15px;
+            color: #ffcdd2;
+            font-family: monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }}
+        #status-message {{
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 15px;
+            display: none;
+        }}
+        #status-message.success {{
+            background: #1b5e20;
+            border: 1px solid #4caf50;
+            color: #c8e6c9;
+        }}
+        #status-message.error {{
+            background: #b71c1c;
+            border: 1px solid #f44336;
+            color: #ffcdd2;
+        }}
+        .timestamp {{
+            color: #888;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Database Maintenance</h1>
+        <p class="subtitle">Monitor and control ESPN4CC4C database refresh and VACUUM</p>
+
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">Last Refresh Status</h2>
+            <div class="stat-grid">
+                <div class="stat {status_class}">
+                    <div class="stat-label">Status</div>
+                    <div class="stat-value">
+                        <span class="status-badge status-{status_class}">
+                            {status_label}
+                        </span>
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Last Run</div>
+                    <div class="stat-value timestamp">
+                        {last_run_text}
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Duration</div>
+                    <div class="stat-value">
+                        {last_duration_text}
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-grid">
+                <div class="stat">
+                    <div class="stat-label">Last Manual Refresh</div>
+                    <div class="stat-value timestamp">
+                        {last_manual_text}
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Last Scheduled Refresh</div>
+                    <div class="stat-value timestamp">
+                        {last_auto_text}
+                    </div>
+                </div>
+            </div>
+
+            {last_error_html}
+            <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                <button class="refresh-btn" onclick="triggerRefresh()" id="refresh-btn" style="max-width: 260px;">
+                    🔄 Trigger Refresh Now
+                </button>
+                <p style="color: #888; font-size: 0.9em; margin: 0; max-width: 420px;">
+                    Trigger a database refresh immediately. This will fetch the latest events from ESPN+ and update your channels.
+                </p>
+            </div>
+            <div id="status-message"></div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">Scheduled Runs</h2>
+            <ul class="schedule-list">
+                <li class="schedule-item">
+                    <span>📅 Database Refresh</span>
+                    <span class="timestamp">08:05, 14:05, 20:05 daily</span>
+                </li>
+                <li class="schedule-item">
+                    <span>🗄️ Database VACUUM</span>
+                    <span class="timestamp">Sunday at 03:10</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">Database Health & VACUUM</h2>
+            <div class="stat-grid">
+                <div class="stat {vac_status_class}">
+                    <div class="stat-label">Last VACUUM Status</div>
+                    <div class="stat-value">
+                        <span class="status-badge status-{vac_status_class}">
+                            {vac_status_label}
+                        </span>
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Last VACUUM Run</div>
+                    <div class="stat-value timestamp">
+                        {vac_last_run_text}
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">VACUUM Duration</div>
+                    <div class="stat-value">
+                        {vac_last_duration_text}
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-grid">
+                <div class="stat">
+                    <div class="stat-label">Last Manual VACUUM</div>
+                    <div class="stat-value timestamp">
+                        {vac_last_manual_text}
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Last Scheduled VACUUM</div>
+                    <div class="stat-value timestamp">
+                        {vac_last_auto_text}
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-grid">
+                <div class="stat">
+                    <div class="stat-label">Database Path</div>
+                    <div class="stat-value" style="font-size: 0.9em; word-break: break-all;">
+                        {db_path}
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Database Size</div>
+                    <div class="stat-value">
+                        {db_size_text}
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Freelist Pages</div>
+                    <div class="stat-value">
+                        {freelist_text}
+                    </div>
+                </div>
+            </div>
+
+            {vac_last_error_html}
+
+            <div style="margin-top: 20px;">
+                <button class="refresh-btn" onclick="triggerVacuum()" id="vacuum-btn" style="width: 100%;">
+                    🗄️ Run VACUUM Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function triggerRefresh() {{
+            const btn = document.getElementById('refresh-btn');
+            const status = document.getElementById('status-message');
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Triggering refresh...';
+            status.style.display = 'none';
+
+            try {{
+                const response = await fetch('/admin/refresh/trigger', {{
+                    method: 'POST'
+                }});
+
+                const data = await response.json();
+
+                if (response.ok) {{
+                    status.className = 'success';
+                    status.textContent = '✓ ' + data.message;
+                    status.style.display = 'block';
+
+                    setTimeout(() => {{
+                        window.location.reload();
+                    }}, 2000);
+                }} else {{
+                    throw new Error(data.message || 'Unknown error');
+                }}
+            }} catch (error) {{
+                status.className = 'error';
+                status.textContent = '✗ Error: ' + error.message;
+                status.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '🔄 Trigger Refresh Now';
+            }}
+        }}
+
+        async function triggerVacuum() {{
+            const btn = document.getElementById('vacuum-btn');
+            const status = document.getElementById('status-message');
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Running VACUUM...';
+            status.style.display = 'none';
+
+            try {{
+                const response = await fetch('/admin/vacuum/trigger', {{
+                    method: 'POST'
+                }});
+
+                const data = await response.json();
+
+                if (response.ok) {{
+                    status.className = 'success';
+                    status.textContent = '✓ ' + data.message;
+                    status.style.display = 'block';
+
+                    setTimeout(() => {{
+                        window.location.reload();
+                    }}, 2000);
+                }} else {{
+                    throw new Error(data.message || 'Unknown error');
+                }}
+            }} catch (error) {{
+                status.className = 'error';
+                status.textContent = '✗ Error: ' + error.message;
+                status.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '🗄️ Run VACUUM Now';
+            }}
+        }}
+
+        const lastRefreshStatus = '{status_class}';
+        const lastVacuumStatus = '{vac_status_class}';
+        if (lastRefreshStatus === 'running' || lastVacuumStatus === 'running') {{
+            setTimeout(() => {{
+                window.location.reload();
+            }}, 30000);
+        }}
+    </script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
+
+@app.post("/admin/vacuum/trigger")
+async def trigger_vacuum():
+    """Manually trigger a database VACUUM"""
+    import threading
+
+    if last_vacuum_info.get("last_status") == "running":
+        return JSONResponse(
+            status_code=409,
+            content={
+                "status": "error",
+                "message": "VACUUM already in progress"
+            }
+        )
+
+    threading.Thread(target=run_vacuum, kwargs={"source": "manual"}, daemon=True).start()
+    return {
+        "status": "success",
+        "message": "VACUUM started in background. Check logs or refresh this page in a moment."
+    }
+
+@app.post("/admin/refresh/trigger")
+async def trigger_refresh():
+    """Manually trigger a database refresh"""
+    import threading
+    
+    # Don't start if already running
+    if last_refresh_info.get("last_status") == "running":
+        return JSONResponse(
+            status_code=409,
+            content={
+                "status": "error",
+                "message": "Refresh already in progress"
+            }
+        )
+    
+    threading.Thread(target=run_refresh, kwargs={"source": "manual"}, daemon=True).start()
+    return {
+        "status": "success",
+        "message": "Database refresh started in background. Check logs or refresh this page in a moment."
+    }
