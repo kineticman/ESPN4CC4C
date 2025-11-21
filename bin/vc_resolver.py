@@ -10,7 +10,8 @@ from typing import Optional
 from urllib.parse import quote
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from pathlib import Path
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
@@ -255,6 +256,22 @@ except Exception:
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+# --- Admin hub page (static HTML) ---
+RESOLVER_DIR = Path(__file__).resolve().parent
+ADMIN_HTML_PATH = RESOLVER_DIR / "admin.html"
+
+
+@app.get("/admin")
+async def admin_index() -> HTMLResponse:
+    """Simple admin hub page linking to all the useful endpoints."""
+    try:
+        html = ADMIN_HTML_PATH.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error("Error reading admin.html: %s", e)
+        raise HTTPException(status_code=500, detail="Admin page template not found")
+    return HTMLResponse(html)
 
 
 # === Middlewares to fill in slate on /vc/*/debug and redirect /vc/<lane> 404 to slate ===

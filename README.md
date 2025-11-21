@@ -8,7 +8,7 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 
 ## 🆕 What’s new (v5.1.x+)
 
-- **Database maintenance dashboard** ⭐ **NEW**: `/admin/refresh` shows last refresh/VACUUM status, duration, and whether it was run manually or by the scheduler, with buttons to trigger a refresh or VACUUM immediately.
+- **Admin pages** ⭐ **NEW**: `/admin` is a simple hub page linking to all of the useful endpoints, and `/admin/refresh` shows last refresh/VACUUM status, duration, and whether it was run manually or by the scheduler, with buttons to trigger a refresh or VACUUM immediately.
 - **Compose-only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
 - **Built-in scheduler (APScheduler)**: runs inside the FastAPI app (no system cron needed) and automatically:
   - refreshes the database at **08:05 / 14:05 / 20:05** every day
@@ -298,6 +298,7 @@ You'll see a snapshot of all 40 lanes reflecting your active filters.
 ## 🔎 API Cheat-Sheet
 
 - `GET /health` → service OK
+- `GET /admin` → admin hub page with links to common endpoints
 - `GET /whatson_all?format=json|txt` → all lanes at a glance
 - `GET /whatson/{lane}?format=json|txt` → a single lane
 - `GET /setupfilters` → interactive page showing available networks/sports/leagues/packages and sample filter snippets
@@ -315,9 +316,14 @@ You'll see a snapshot of all 40 lanes reflecting your active filters.
 
 ## 🧰 Operations
 
-**Manual refresh (web, recommended)**
+**Admin hub (web, recommended starting point)**
 
-- Open: `http://<YOUR-IP>:8094/admin/refresh`
+- Open: `http://<YOUR-IP>:8094/admin`
+- This page links to health checks, EPG/M3U outputs, filters/setup helpers, lane debug tools, and the refresh/VACUUM dashboard.
+
+**Manual refresh (web)**
+
+- From the admin hub or directly: `http://<YOUR-IP>:8094/admin/refresh`
 - Click **“🔄 Trigger Refresh Now”** to run the full ESPN+ ingest/plan/XMLTV/M3U pipeline in the background.
 - The page will show status, last run time, duration, and any error message.
 

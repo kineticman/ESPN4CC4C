@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESPN4CC4C Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 0.3rem;
+    }
+    .subtitle {
+      color: #aaa;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 0.6rem;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: #ccc;
+      margin-bottom: 0.6rem;
+    }
+    ul.link-list {
+      list-style: none;
+      margin-top: 0.4rem;
+    }
+    ul.link-list li {
+      margin-bottom: 0.3rem;
+    }
+    a {
+      color: #64b5f6;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    code {
+      background: #252525;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-size: 0.85rem;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: #333;
+      color: #bbb;
+      margin-left: 6px;
+    }
+    .footer {
+      margin-top: 24px;
+      font-size: 0.8rem;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ESPN4CC4C Admin</h1>
+    <p class="subtitle">
+      Quick links to health checks, EPG/M3U outputs, filters, “what’s on”, deep-links, and database maintenance.
+    </p>
+
+    <div class="grid">
+
+      <div class="card">
+        <h2>Maintenance <span class="pill">Admin</span></h2>
+        <p>Database refresh / VACUUM and scheduler status.</p>
+        <ul class="link-list">
+          <li><a href="/admin/refresh">/admin/refresh</a> – refresh &amp; VACUUM dashboard (manual + scheduled)</li>
+          <li><a href="/health">/health</a> – simple service health check</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>EPG &amp; Playlists <span class="pill">Channels</span></h2>
+        <p>Outputs you point Channels DVR or other clients at.</p>
+        <ul class="link-list">
+          <li><a href="/out/epg.xml">/out/epg.xml</a> – XMLTV EPG</li>
+          <li><a href="/out/playlist.m3u">/out/playlist.m3u</a> – standard M3U</li>
+          <li><a href="/out/playlist.ch4c.m3u">/out/playlist.ch4c.m3u</a> – experimental CH4C M3U</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>What’s On / Lanes</h2>
+        <p>Current programming in each virtual channel lane.</p>
+        <ul class="link-list">
+          <li><a href="/whatson_all?format=txt">/whatson_all?format=txt</a> – all lanes (text)</li>
+          <li><a href="/whatson_all?format=json">/whatson_all?format=json</a> – all lanes (JSON)</li>
+          <li><code>/whatson/{lane}</code> – single lane (txt or json)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Filters &amp; Setup</h2>
+        <p>Inspect and tune your filters based on what’s in the DB.</p>
+        <ul class="link-list">
+          <li><a href="/setupfilters">/setupfilters</a> – interactive filter helper</li>
+          <li><a href="/filters">/filters</a> – current filters (HTML)</li>
+          <li><a href="/filters/json">/filters/json</a> – current filters (JSON)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Deep-Link &amp; Debug</h2>
+        <p>ESPN deep-link helpers and resolver debug tools.</p>
+        <ul class="link-list">
+          <li><code>/deeplink/{lane}</code> – sportscenter:// URL for a lane</li>
+          <li><code>/api/test/{lane}</code> – deeplink test matrix</li>
+          <li><code>/vc/{lane}</code> – main resolver endpoint</li>
+          <li><code>/vc/{lane}/debug</code> – resolver debug JSON</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="footer">
+      Tip: start at <code>/admin/refresh</code> to confirm the scheduler is running and the database is healthy,
+      then wire <code>/out/epg.xml</code> and <code>/out/playlist.m3u</code> into Channels DVR.
+    </div>
+  </div>
+</body>
+</html>
