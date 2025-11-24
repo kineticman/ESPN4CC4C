@@ -1740,13 +1740,23 @@ def setup_filters_helper():
   <h2>2. Copy the suggested environment block</h2>
   <div class="card">
     <p class="small">
-      Paste this under the <code>environment:</code> section for the <code>espn4cc4c</code> service
-      in your compose file or Portainer stack.
+      <strong>For docker-compose.yml:</strong> Paste this under the <code>environment:</code> section for the <code>espn4cc4c</code> service.
     </p>
     <textarea id="configPreview" spellcheck="false"></textarea>
     <div class="actions">
       <button class="copy-btn" type="button" onclick="copySnippet()">Copy to clipboard</button>
       <span class="status" id="copyStatus"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="small">
+      <strong>For Portainer Stack Editor:</strong> Paste this in the <code>Environment variables</code> section (advanced mode).
+    </p>
+    <textarea id="portainerPreview" spellcheck="false"></textarea>
+    <div class="actions">
+      <button class="copy-btn" type="button" onclick="copyPortainerSnippet()">Copy to clipboard</button>
+      <span class="status" id="portainerCopyStatus"></span>
     </div>
     <p class="small" style="margin-top:10px;">
       After updating your stack and restarting the container, open
@@ -1779,7 +1789,9 @@ def setup_filters_helper():
         var item = list[i] || {};
         var name = item.name || "";
         var count = item.count || 0;
-        var safeName = String(name).replace(/"/g, '&quot;');
+        // Only escape for display in HTML content, not for data-name attribute
+        var escapedNameForDisplay = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        var escapedNameForAttr = String(name).replace(/"/g, '&quot;');
 
         var wrap = document.createElement("div");
         wrap.className = "option-item";
@@ -1790,9 +1802,9 @@ def setup_filters_helper():
           + '<input type="checkbox"'
           + ' class="filter-checkbox"'
           + ' data-kind="' + kind + '"'
-          + ' data-name="' + safeName + '"'
+          + ' data-name="' + escapedNameForAttr + '"'
           + ' id="' + id + '">'
-          + safeName + ' <span class="small">(' + count + ' events)</span>'
+          + escapedNameForDisplay + ' <span class="small">(' + count + ' events)</span>'
           + '</label>';
 
         wrap.innerHTML = html;
@@ -1813,6 +1825,10 @@ def setup_filters_helper():
       checked.forEach(function(input) {
         var kind = input.getAttribute("data-kind");
         var name = input.getAttribute("data-name");
+        // Unescape &quot; back to " for the actual environment variable value
+        if (name) {
+          name = name.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        }
         if (kind && name && byKind[kind]) {
           byKind[kind].push(name);
         }
@@ -1823,6 +1839,7 @@ def setup_filters_helper():
       var caseInsensitive = document.getElementById("caseInsensitive").checked;
       var partialLeagueMatch = document.getElementById("partialLeagueMatch").checked;
 
+      // Docker-compose format
       var lines = [];
       lines.push("environment:");
       lines.push("  - FILTER_EXCLUDE_NETWORKS=" + (byKind.network.join(",") || ""));
@@ -1839,6 +1856,23 @@ def setup_filters_helper():
       if (area) {
         area.value = lines.join('\\n');
       }
+
+      // Portainer format (no "environment:" header, no "  - " prefix)
+      var portainerLines = [];
+      portainerLines.push("FILTER_EXCLUDE_NETWORKS=" + (byKind.network.join(",") || ""));
+      portainerLines.push("FILTER_EXCLUDE_LEAGUES=" + (byKind.league.join(",") || ""));
+      portainerLines.push("FILTER_EXCLUDE_SPORTS=" + (byKind.sport.join(",") || ""));
+      portainerLines.push("FILTER_EXCLUDE_EVENT_TYPES=" + (byKind.event_type.join(",") || ""));
+      portainerLines.push("FILTER_EXCLUDE_LANGUAGES=" + (hideEs ? "es" : ""));
+      portainerLines.push("FILTER_EXCLUDE_REAIR=" + (hideReair ? "true" : "false"));
+      portainerLines.push("FILTER_CASE_INSENSITIVE=" + (caseInsensitive ? "true" : "false"));
+      portainerLines.push("FILTER_PARTIAL_LEAGUE_MATCH=" + (partialLeagueMatch ? "true" : "false"));
+      portainerLines.push("FILTER_REQUIRE_ESPN_PLUS=false");
+
+      var portainerArea = document.getElementById("portainerPreview");
+      if (portainerArea) {
+        portainerArea.value = portainerLines.join('\\n');
+      }
     }
 
     function copySnippet() {
@@ -1849,6 +1883,23 @@ def setup_filters_helper():
       try {
         var ok = document.execCommand("copy");
         var status = document.getElementById("copyStatus");
+        if (status) {
+          status.textContent = ok ? "Copied to clipboard" : "Unable to copy";
+          setTimeout(function() { status.textContent = ""; }, 1500);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function copyPortainerSnippet() {
+      var area = document.getElementById("portainerPreview");
+      if (!area) return;
+      area.focus();
+      area.select();
+      try {
+        var ok = document.execCommand("copy");
+        var status = document.getElementById("portainerCopyStatus");
         if (status) {
           status.textContent = ok ? "Copied to clipboard" : "Unable to copy";
           setTimeout(function() { status.textContent = ""; }, 1500);
@@ -1953,6 +2004,15 @@ def setup_filters_helper():
               el.innerHTML = '<div class="small">Error loading /filters/json - check logs.</div>';
             }
           }
+          
+          // Still set up event listeners for the checkboxes
+          document.getElementById("hideEs").addEventListener("change", buildSnippet);
+          document.getElementById("hideReair").addEventListener("change", buildSnippet);
+          document.getElementById("caseInsensitive").addEventListener("change", buildSnippet);
+          document.getElementById("partialLeagueMatch").addEventListener("change", buildSnippet);
+          
+          // Build boilerplate snippet so users at least see the FILTER_* keys
+          buildSnippet();
         });
     });
   </script>
