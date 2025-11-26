@@ -318,18 +318,20 @@ def build_plan(
         # Apply padding if enabled
         padding_applied = False
         if padding_start_mins > 0 or padding_end_mins > 0:
-            # Use is_reair to determine if this is live content
-            # is_reair = 0 means original live broadcast (needs padding)
-            # is_reair = 1 means replay/re-air (doesn't need padding)
+            # Check both content flags to determine if this needs padding:
+            # is_reair = 0 means original live broadcast (not a replay)
+            # is_studio = 0 means actual game/competition (not a talk show)
+            # Only truly live sports events (both = 0) should be padded
             is_reair = e.get("is_reair", 0)
+            is_studio = e.get("is_studio", 0)
             
-            # Apply padding to live content (is_reair=0), or all content if padding_live_only=False
-            if not padding_live_only or is_reair == 0:
+            # Apply padding to live sports content, or all content if padding_live_only=False
+            if not padding_live_only or (is_reair == 0 and is_studio == 0):
                 s = s - timedelta(minutes=padding_start_mins)
                 t = t + timedelta(minutes=padding_end_mins)
                 padding_applied = True
                 padding_applied_count += 1
-            elif is_reair == 1:
+            else:
                 padding_skipped_reair_count += 1
         
         # Clamp to window boundaries
@@ -356,7 +358,7 @@ def build_plan(
             padding_end_mins=padding_end_mins,
             padding_live_only=padding_live_only,
             events_padded=padding_applied_count,
-            reair_events_skipped=padding_skipped_reair_count,
+            non_live_events_skipped=padding_skipped_reair_count,
             total_events=len(events),
         )
 
@@ -417,6 +419,7 @@ def build_plan(
                 event="event_padded",
                 event_id=eid,
                 is_reair=ev.get("is_reair", 0),
+                is_studio=ev.get("is_studio", 0),
                 original_start=iso(ev["_original_start"]),
                 original_end=iso(ev["_original_end"]),
                 padded_start=iso(ev["_s"]),

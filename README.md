@@ -13,7 +13,7 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
   - `PADDING_START_MINS` - Minutes before event start (catch pre-game or early starts)
   - `PADDING_END_MINS` - Minutes after event end (catch overtime/extra innings)
   - `PADDING_LIVE_ONLY` - Only pad live sports, skip studio shows (default: true)
-  - Smart detection: automatically skips studio content when enabled
+  - Smart detection: automatically skips studio shows and replays (only pads live sports)
   - Comprehensive logging: every padded event is logged for audit
   - See **Event Padding** section below for details
 - **Compose-only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
@@ -199,7 +199,7 @@ Event padding extends the start and/or end times in your guide (EPG) so recordin
   - Handles overtime, extra innings, delays
   - Example: 30-60 minutes covers most overruns
 
-- **Live-only mode** (`PADDING_LIVE_ONLY`): Automatically skips studio shows
+- **Live-only mode** (`PADDING_LIVE_ONLY`): Automatically skips studio shows and replays
   - Studio content (SportsCenter, talk shows) has fixed durations
   - Only pads actual sports events where overruns happen
 
@@ -221,7 +221,7 @@ environment:
 |----------|---------|-------------|
 | `PADDING_START_MINS` | `0` | Minutes to add before event start |
 | `PADDING_END_MINS` | `0` | Minutes to add after event end |
-| `PADDING_LIVE_ONLY` | `true` | Only pad live sports, skip studio shows |
+| `PADDING_LIVE_ONLY` | `true` | Only pad live sports, skip studio shows and replays |
 
 ### Examples
 
@@ -257,9 +257,10 @@ Use ESPN's exact times (default behavior).
 2. **Padding is applied during planning**: 
    - With `PADDING_START_MINS=5, PADDING_END_MINS=30`
    - Guide shows: 6:55 PM - 10:30 PM
-3. **Studio detection**: 
-   - Live sports (event_type="LIVE") → padded
-   - Studio shows (event_type="STUDIO") → not padded (when `PADDING_LIVE_ONLY=true`)
+3. **Content detection**: 
+   - Live sports (is_reair=0, is_studio=0) → padded
+   - Studio shows (is_studio=1) → not padded (when `PADDING_LIVE_ONLY=true`)
+   - Replays (is_reair=1) → not padded (when `PADDING_LIVE_ONLY=true`)
 4. **Database stays clean**: Original ESPN times preserved in database
 5. **Comprehensive logging**: Every padded event logged in `/app/logs/plan_builder.jsonl`
 
@@ -272,7 +273,7 @@ docker logs espn4cc4c | grep padding_summary
 
 Expected output:
 ```json
-{"event":"padding_summary","events_padded":127,"studio_events_skipped":8}
+{"event":"padding_summary","events_padded":127,"non_live_events_skipped":8}
 ```
 
 **Check the EPG times:**

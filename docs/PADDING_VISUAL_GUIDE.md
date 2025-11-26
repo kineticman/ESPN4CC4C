@@ -79,7 +79,7 @@ Event Type Detection:
 
 ┌─────────────────────┐
 │ ESPN Event Data     │
-│ event_type="STUDIO" │  → NOT PADDED
+│ is_studio=1 │  → NOT PADDED
 │ (SportsCenter)      │     8:00 ── 8:30
 └─────────────────────┘     (Exact ESPN times)
 
@@ -130,7 +130,7 @@ Configuration:
   PADDING_LIVE_ONLY=true
 
 ESPN Schedule:
-  12:00 PM - GameDay (Studio)    event_type="STUDIO"
+  12:00 PM - GameDay (Studio)    is_studio=1
    1:00 PM - Ohio State vs Michigan (Live)  event_type="LIVE"
    4:30 PM - Alabama vs Auburn (Live)       event_type="LIVE"
 
@@ -157,7 +157,7 @@ When you check the logs after a refresh:
   "padding_start_mins": 5,
   "padding_end_mins": 30,
   "events_padded": 42,           ← Live sports that got padding
-  "studio_events_skipped": 3,    ← Studio shows skipped
+  "non_live_events_skipped": 3,    ← Studio shows skipped
   "total_events": 45
 }
 
