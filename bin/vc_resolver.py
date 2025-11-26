@@ -147,6 +147,53 @@ def _get_db_stats():
         logger.warning("Unable to query freelist_count: %s", exc)
     return db_path, size_mb, freelist
 
+def cleanup_old_logs(source: str = "auto"):
+    """Clean up old log files, keeping only the 3 most recent of each type."""
+    import glob
+    import time
+    
+    global last_vacuum_info  # Reuse vacuum info dict for logging
+    start_time = time.time()
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+    
+    log_dir = Path("/app/logs")
+    if not log_dir.exists():
+        return
+    
+    removed_count = 0
+    try:
+        logger.info("Starting log cleanup...")
+        
+        # Patterns for main log files (including rotated versions)
+        patterns = [
+            "plan_builder.jsonl*",
+            "refresh.log*",
+            "cron_refresh.log*",
+            "cron_vacuum.log*",
+        ]
+        
+        for pattern in patterns:
+            files = sorted(
+                glob.glob(str(log_dir / pattern)),
+                key=os.path.getmtime,
+                reverse=True
+            )
+            # Keep newest 3, delete rest
+            for old_file in files[3:]:
+                try:
+                    size = os.path.getsize(old_file)
+                    os.remove(old_file)
+                    removed_count += 1
+                    logger.info(f"Cleaned up old log: {old_file} ({size / 1024 / 1024:.1f} MB)")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up {old_file}: {e}")
+        
+        duration = time.time() - start_time
+        logger.info(f"Log cleanup completed: removed {removed_count} old log files in {duration:.1f}s")
+        
+    except Exception as e:
+        logger.error(f"Error during log cleanup: {e}")
+
 def start_scheduler() -> BackgroundScheduler:
     """Initialize and start the background scheduler"""
     scheduler = BackgroundScheduler()
@@ -162,8 +209,14 @@ def start_scheduler() -> BackgroundScheduler:
         id='vacuum_job',
         kwargs={"source": "auto"},
     )
+    scheduler.add_job(
+        cleanup_old_logs,
+        CronTrigger(day_of_week='sun', hour=3, minute=30),
+        id='log_cleanup_job',
+        kwargs={"source": "auto"},
+    )
     scheduler.start()
-    logger.info("Scheduler started: refresh daily at 03:00, vacuum Sunday 03:10")
+    logger.info("Scheduler started: refresh daily at 03:00, vacuum Sunday 03:10, log cleanup Sunday 03:30")
     return scheduler
 
 @asynccontextmanager

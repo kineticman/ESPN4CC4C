@@ -9,9 +9,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from logging.handlers import RotatingFileHandler
 from typing import Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -38,7 +40,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.7-padding"
+VERSION = "2.1.7-padding-logrotate"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -47,14 +49,26 @@ LOG_PATH = os.path.join(LOG_DIR, "plan_builder.jsonl")
 STICKY_GRACE = timedelta(seconds=0)  # lane must be free at event start
 
 
-# ---------- Logging ----------
+# ---------- Logging with rotation ----------
+_log_handler = RotatingFileHandler(
+    LOG_PATH,
+    maxBytes=10 * 1024 * 1024,  # 10 MB per file
+    backupCount=3,  # Keep 3 old files (30MB max total)
+    encoding="utf-8",
+)
+_log_handler.setFormatter(logging.Formatter('%(message)s'))  # Raw JSONL format
+
+_logger = logging.getLogger("plan_builder")
+_logger.setLevel(logging.INFO)
+_logger.addHandler(_log_handler)
+
+
 def jlog(**kv):
     kv = {"ts": datetime.now(timezone.utc).isoformat(), "mod": "build_plan", **kv}
     line = json.dumps(kv, ensure_ascii=False)
     print(line, flush=True)
     try:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        _logger.info(line)
     except Exception:
         pass
 
