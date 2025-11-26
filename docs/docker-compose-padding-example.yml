@@ -1,0 +1,36 @@
+# Docker Compose Environment Variables for Padding
+# Add these to your espn4cc4c service environment section:
+
+environment:
+  # ... your existing vars ...
+  
+  # Event Padding Configuration
+  # Add padding before event start (in minutes)
+  - PADDING_START_MINS=${PADDING_START_MINS:-5}
+  
+  # Add padding after event end (in minutes)  
+  - PADDING_END_MINS=${PADDING_END_MINS:-30}
+  
+  # Only pad live sports events, skip studio shows (true/false)
+  - PADDING_LIVE_ONLY=${PADDING_LIVE_ONLY:-true}
+
+# Example configurations:
+
+# Conservative (5 min pre, 30 min post for live events only):
+#   PADDING_START_MINS=5
+#   PADDING_END_MINS=30
+#   PADDING_LIVE_ONLY=true
+
+# Aggressive (10 min pre, 60 min post for live events only):
+#   PADDING_START_MINS=10
+#   PADDING_END_MINS=60
+#   PADDING_LIVE_ONLY=true
+
+# Pad everything including studio shows:
+#   PADDING_START_MINS=5
+#   PADDING_END_MINS=15
+#   PADDING_LIVE_ONLY=false
+
+# Disable padding:
+#   PADDING_START_MINS=0
+#   PADDING_END_MINS=0

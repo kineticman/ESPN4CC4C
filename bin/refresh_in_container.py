@@ -75,6 +75,11 @@ CC_HOST = env("CC_HOST", "")
 CC_PORT = env("CC_PORT", "")
 VC_BASE = env("VC_RESOLVER_BASE_URL", "")
 
+# Event Padding Configuration
+PADDING_START_MINS = int(env("PADDING_START_MINS", "0") or "0")
+PADDING_END_MINS = int(env("PADDING_END_MINS", "0") or "0")
+PADDING_LIVE_ONLY = env("PADDING_LIVE_ONLY", "true").lower() in ("1", "true", "yes")
+
 AUTO_FORCE_REPLAN_ON_FILTER_CHANGE = env("AUTO_FORCE_REPLAN_ON_FILTER_CHANGE", "true").lower() in (
     "1",
     "true",
@@ -101,6 +106,9 @@ print(f"  LANES: {LANES}")
 print(f"  ALIGN: {ALIGN}")
 print(f"  MIN_GAP_MINS: {MIN_GAP_MINS}")
 print(f"  VC_RESOLVER_BASE_URL: {VC_BASE}")
+print(f"  PADDING_START_MINS: {PADDING_START_MINS}")
+print(f"  PADDING_END_MINS: {PADDING_END_MINS}")
+print(f"  PADDING_LIVE_ONLY: {PADDING_LIVE_ONLY}")
 print(f"  AUTO_FORCE_REPLAN_ON_FILTER_CHANGE: {AUTO_FORCE_REPLAN_ON_FILTER_CHANGE}")
 print(f"  AUTO_RESET_DB_ON_FILTER_CHANGE: {AUTO_RESET_DB_ON_FILTER_CHANGE}")
 
@@ -204,17 +212,26 @@ try:
 
     conn = sqlite3.connect(DB)
     included_event_ids = filter_events_from_db(conn, event_filter)
+    cursor = conn.cursor()
 
-    if included_event_ids:
-        cursor = conn.cursor()
+    if included_event_ids is None:
+        # Filter returned None - treat as error, leave DB unchanged
+        print("[filter] WARNING: Filter returned None, leaving events table unchanged.", flush=True)
+    elif len(included_event_ids) == 0:
+        # No events passed filters - delete everything
+        print("[filter] WARNING: No events passed filters! Deleting all events.", flush=True)
+        cursor.execute("DELETE FROM events")
+        deleted_count = cursor.rowcount
+        conn.commit()
+        print(f"[filter] Removed {deleted_count} events (all events filtered out)", flush=True)
+    else:
+        # Some events passed - delete everything NOT in the list
         placeholders = ",".join("?" * len(included_event_ids))
         delete_query = f"DELETE FROM events WHERE id NOT IN ({placeholders})"
         cursor.execute(delete_query, included_event_ids)
         deleted_count = cursor.rowcount
         conn.commit()
         print(f"[filter] Removed {deleted_count} events that didn't pass filters", flush=True)
-    else:
-        print("[filter] WARNING: No events passed filters! All events excluded.", flush=True)
 
     conn.close()
 except Exception as e:
@@ -245,7 +262,14 @@ build_cmd = [
     str(MIN_GAP_MINS),
     "--lanes",
     str(LANES),
+    "--padding-start-mins",
+    str(PADDING_START_MINS),
+    "--padding-end-mins",
+    str(PADDING_END_MINS),
 ]
+
+if not PADDING_LIVE_ONLY:
+    build_cmd.append("--padding-all")
 
 force_replan = filters_changed and AUTO_FORCE_REPLAN_ON_FILTER_CHANGE
 if force_replan:

@@ -6,7 +6,7 @@ import sqlite3
 import traceback
 import logging
 import subprocess
-from typing import Optional
+from typing import Dict, Any, Optional
 from urllib.parse import quote
 from contextlib import asynccontextmanager
 
@@ -152,7 +152,7 @@ def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         run_refresh,
-        CronTrigger(hour='8,14,20', minute=5),
+        CronTrigger(hour=3, minute=0),
         id='refresh_job',
         kwargs={"source": "auto"},
     )
@@ -163,7 +163,7 @@ def start_scheduler() -> BackgroundScheduler:
         kwargs={"source": "auto"},
     )
     scheduler.start()
-    logger.info("Scheduler started: refresh at 08:05/14:05/20:05, vacuum Sunday 03:10")
+    logger.info("Scheduler started: refresh daily at 03:00, vacuum Sunday 03:10")
     return scheduler
 
 @asynccontextmanager
@@ -175,6 +175,8 @@ async def lifespan(app: FastAPI):
 
 # --- ChromeCapture config ---
 CC_HOST = os.getenv("CC_HOST")  # defaults to resolver host if not set
+CC_PORT = os.getenv("CC_PORT", "5589")
+VC_RESOLVER_BASE_URL = os.getenv("VC_RESOLVER_BASE_URL", "")
 
 # Global variable to track last refresh stats
 last_refresh_info = {
@@ -2311,7 +2313,7 @@ async def admin_dashboard():
             <ul class="schedule-list">
                 <li class="schedule-item">
                     <span>📅 Database Refresh</span>
-                    <span class="timestamp">08:05, 14:05, 20:05 daily</span>
+                    <span class="timestamp">03:00 daily</span>
                 </li>
                 <li class="schedule-item">
                     <span>🗄️ Database VACUUM</span>

@@ -9,9 +9,16 @@ Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Cha
 ## 🆕 What’s new (v5.1.x+)
 
 - **Admin pages** ⭐ **NEW**: `/admin` is a simple hub page linking to all of the useful endpoints, and `/admin/refresh` shows last refresh/VACUUM status, duration, and whether it was run manually or by the scheduler, with buttons to trigger a refresh or VACUUM immediately.
+- **Event Padding** ⭐ **NEW**: Add configurable padding before/after live sports events to handle games that run long!
+  - `PADDING_START_MINS` - Minutes before event start (catch pre-game or early starts)
+  - `PADDING_END_MINS` - Minutes after event end (catch overtime/extra innings)
+  - `PADDING_LIVE_ONLY` - Only pad live sports, skip studio shows (default: true)
+  - Smart detection: automatically skips studio content when enabled
+  - Comprehensive logging: every padded event is logged for audit
+  - See **Event Padding** section below for details
 - **Compose-only onboarding**: just drop a Portainer Stack or run `docker compose up` — no extra setup.
 - **Built-in scheduler (APScheduler)**: runs inside the FastAPI app (no system cron needed) and automatically:
-  - refreshes the database at **08:05 / 14:05 / 20:05** every day
+  - refreshes the database at **03:00** every day
   - runs a SQLite **VACUUM** on Sundays at **03:10**
 - **Safer compose**: init-enabled, graceful stop, `${PORT}`-aware healthcheck, and log rotation.
 - **Environment variable filtering** ⭐ **NEW**: Configure all filters via env vars in docker-compose.yml (no more INI file confusion!)
@@ -69,6 +76,10 @@ services:
       - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
       - VC_M3U_PATH=${VC_M3U_PATH:-/app/out/playlist.m3u}
       - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
+      # Optional: Event padding (see Event Padding section below)
+      # - PADDING_START_MINS=${PADDING_START_MINS:-0}
+      # - PADDING_END_MINS=${PADDING_END_MINS:-30}
+      # - PADDING_LIVE_ONLY=${PADDING_LIVE_ONLY:-true}
       # Optional: Event filtering (see Filtering section below)
       # - FILTER_EXCLUDE_NETWORKS=ACCN,ESPN,ESPN2,ESPNDeportes,ESPNU
       # - FILTER_REQUIRE_ESPN_PLUS=true
@@ -107,6 +118,7 @@ services:
 - `CC_HOST=<YOUR-IP>`
 - *(optional)* `HOST_DIR=/data/espn4cc4c` to store DB/out/logs under a specific host path
 - *(optional)* `CH4C_HOST` / `CH4C_PORT` if CH4C lives somewhere other than `127.0.0.1:2442`
+- *(optional)* `PADDING_START_MINS=0` / `PADDING_END_MINS=30` / `PADDING_LIVE_ONLY=true` for event padding (see Event Padding section)
 
 5) **Deploy the stack**
 
@@ -166,6 +178,113 @@ ESPN4CC4C keeps all available feeds, but **labels them so you can tell which is 
 - In Channels DVR, you'll see two entries with the same title and time, but different descriptions, so you can choose the right home/away feed without trial-and-error.
 
 If no reliable feed label is available for a given game, the event is left unlabelled rather than guessing.
+
+---
+
+## ⏱️ Event Padding (handle games that run long)
+
+**New in v5.1+:** Add configurable padding before and after live sports events to ensure you don't miss overtime, extra innings, or pre-game coverage.
+
+### Why Padding?
+
+Live sports often run longer than ESPN's scheduled time. A 3-hour football game can easily go 3.5+ hours with overtime. Without padding, your recording stops at the scheduled end time and you miss the exciting finish.
+
+Event padding extends the start and/or end times in your guide (EPG) so recordings capture the full event:
+
+- **Pre-padding** (`PADDING_START_MINS`): Starts recording before ESPN's scheduled time
+  - Catches pre-game shows, early starts, or delays
+  - Example: 5 minutes catches a 7:03 PM start for a "7:00 PM" game
+
+- **Post-padding** (`PADDING_END_MINS`): Continues recording after ESPN's scheduled end
+  - Handles overtime, extra innings, delays
+  - Example: 30-60 minutes covers most overruns
+
+- **Live-only mode** (`PADDING_LIVE_ONLY`): Automatically skips studio shows
+  - Studio content (SportsCenter, talk shows) has fixed durations
+  - Only pads actual sports events where overruns happen
+
+### Configuration
+
+Add these environment variables to your `docker-compose.yml`:
+
+```yaml
+environment:
+  # Recommended: 30min post-padding for live events only
+  - PADDING_START_MINS=0
+  - PADDING_END_MINS=30
+  - PADDING_LIVE_ONLY=true
+```
+
+**Available Settings:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PADDING_START_MINS` | `0` | Minutes to add before event start |
+| `PADDING_END_MINS` | `0` | Minutes to add after event end |
+| `PADDING_LIVE_ONLY` | `true` | Only pad live sports, skip studio shows |
+
+### Examples
+
+**Conservative (most users):**
+```yaml
+environment:
+  - PADDING_START_MINS=0
+  - PADDING_END_MINS=30
+  - PADDING_LIVE_ONLY=true
+```
+No pre-padding, 30 minutes post-padding, live events only.
+
+**Aggressive (football, baseball fans):**
+```yaml
+environment:
+  - PADDING_START_MINS=5
+  - PADDING_END_MINS=60
+  - PADDING_LIVE_ONLY=true
+```
+Catch early starts and long games with overtime.
+
+**Disable padding:**
+```yaml
+environment:
+  - PADDING_START_MINS=0
+  - PADDING_END_MINS=0
+```
+Use ESPN's exact times (default behavior).
+
+### How It Works
+
+1. **ESPN provides base times**: e.g., 7:00 PM - 10:00 PM
+2. **Padding is applied during planning**: 
+   - With `PADDING_START_MINS=5, PADDING_END_MINS=30`
+   - Guide shows: 6:55 PM - 10:30 PM
+3. **Studio detection**: 
+   - Live sports (event_type="LIVE") → padded
+   - Studio shows (event_type="STUDIO") → not padded (when `PADDING_LIVE_ONLY=true`)
+4. **Database stays clean**: Original ESPN times preserved in database
+5. **Comprehensive logging**: Every padded event logged in `/app/logs/plan_builder.jsonl`
+
+### Verify Padding Is Working
+
+**Check the logs:**
+```bash
+docker logs espn4cc4c | grep padding_summary
+```
+
+Expected output:
+```json
+{"event":"padding_summary","events_padded":127,"studio_events_skipped":8}
+```
+
+**Check the EPG times:**
+Open `http://<YOUR-IP>:8094/out/epg.xml` and look for padded times in `<programme>` tags.
+
+### Important Notes
+
+- **Grid alignment can break**: Padded events may start at :03, :58, etc. (not just :00/:30)
+- **Padding wins over placeholders**: Real content takes priority over gap fillers
+- **Event conflicts**: If padding causes two events to overlap, the later event is dropped
+- **Non-breaking change**: Default is 0 padding (backward compatible)
+- **No filter impact**: Filters see original ESPN times, not padded times
 
 ---
 

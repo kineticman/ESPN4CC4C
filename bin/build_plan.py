@@ -38,7 +38,7 @@ except Exception:
     CFG_LANES = 40
     CFG_CHANNEL_START_CHNO = 20010
 
-VERSION = "2.1.6-sticky-default-start"
+VERSION = "2.1.7-padding"
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -99,6 +99,23 @@ def parse_args() -> argparse.Namespace:
         "--force-replan",
         action="store_true",
         help="ignore sticky lanes and force fresh planning (use after filter changes)",
+    )
+    ap.add_argument(
+        "--padding-start-mins",
+        type=int,
+        default=0,
+        help="minutes of padding before event start (default: 0)",
+    )
+    ap.add_argument(
+        "--padding-end-mins",
+        type=int,
+        default=0,
+        help="minutes of padding after event end (default: 0)",
+    )
+    ap.add_argument(
+        "--padding-all",
+        action="store_true",
+        help="apply padding to all events (default: live events only)",
     )
     return ap.parse_args()
 
@@ -264,25 +281,70 @@ def build_plan(
     min_gap: timedelta,
     align_minutes: int,
     _sticky_map: Optional[Dict[str, str]] = None,
+    padding_start_mins: int = 0,
+    padding_end_mins: int = 0,
+    padding_live_only: bool = True,
 ) -> List[dict]:
     # Normalize events into window and to UTC datetimes
     norm_events: List[dict] = []
+    padding_applied_count = 0
+    padding_skipped_reair_count = 0
+    
     for e in events:
         try:
             s = datetime.fromisoformat(e["start_utc"]).astimezone(timezone.utc)
             t = datetime.fromisoformat(e["stop_utc"]).astimezone(timezone.utc)
         except Exception:
             continue
+        
+        # Store original times for logging
+        original_start = s
+        original_end = t
+        
+        # Apply padding if enabled
+        padding_applied = False
+        if padding_start_mins > 0 or padding_end_mins > 0:
+            # Use is_reair to determine if this is live content
+            # is_reair = 0 means original live broadcast (needs padding)
+            # is_reair = 1 means replay/re-air (doesn't need padding)
+            is_reair = e.get("is_reair", 0)
+            
+            # Apply padding to live content (is_reair=0), or all content if padding_live_only=False
+            if not padding_live_only or is_reair == 0:
+                s = s - timedelta(minutes=padding_start_mins)
+                t = t + timedelta(minutes=padding_end_mins)
+                padding_applied = True
+                padding_applied_count += 1
+            elif is_reair == 1:
+                padding_skipped_reair_count += 1
+        
+        # Clamp to window boundaries
         if t <= start_dt_utc or s >= end_dt_utc:
             continue
         s = max(s, start_dt_utc)
         t = min(t, end_dt_utc)
         if t <= s:
             continue
+        
         e2 = dict(e)
         e2["_s"] = s
         e2["_t"] = t
+        e2["_padding_applied"] = padding_applied
+        e2["_original_start"] = original_start
+        e2["_original_end"] = original_end
         norm_events.append(e2)
+    
+    # Log padding summary
+    if padding_start_mins > 0 or padding_end_mins > 0:
+        jlog(
+            event="padding_summary",
+            padding_start_mins=padding_start_mins,
+            padding_end_mins=padding_end_mins,
+            padding_live_only=padding_live_only,
+            events_padded=padding_applied_count,
+            reair_events_skipped=padding_skipped_reair_count,
+            total_events=len(events),
+        )
 
     # Channel timelines
     channels_sorted = [
@@ -333,6 +395,19 @@ def build_plan(
                 event_id=eid,
                 sticky=preferred,
                 assigned=target_cid,
+            )
+        
+        # Log individual padding application for audit
+        if ev.get("_padding_applied"):
+            jlog(
+                event="event_padded",
+                event_id=eid,
+                is_reair=ev.get("is_reair", 0),
+                original_start=iso(ev["_original_start"]),
+                original_end=iso(ev["_original_end"]),
+                padded_start=iso(ev["_s"]),
+                padded_end=iso(ev["_t"]),
+                channel_id=target_cid,
             )
 
         timelines[target_cid].append(
@@ -391,6 +466,7 @@ def build_plan(
         timelines[cid] = filled
 
     # Safety clean-up: remove overlaps and drop placeholders overlapped by events
+    # Padded events should "win" over placeholders
     cleaned: List[dict] = []
     new_sticky: List[Tuple[str, str]] = []
     for cid in channels_sorted:
@@ -408,7 +484,7 @@ def build_plan(
                 if current["end"] > nxt["start"]:
                     # Overlap
                     if current["kind"] == "event" and nxt["kind"] == "placeholder":
-                        # truncate/skip placeholder
+                        # truncate/skip placeholder (padding wins)
                         if nxt["end"] <= current["end"]:
                             # placeholder fully covered — drop it
                             i += 1
@@ -508,17 +584,6 @@ def write_plan(
             (str(plan_id),),
         )
     return int(plan_id), ck
-
-
-# ---------- New default-start helper ----------
-def _get_previous_plan_start(conn: sqlite3.Connection) -> Optional[str]:
-    try:
-        row = conn.execute(
-            "SELECT valid_from_utc FROM plan_run ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        return row[0] if row and row[0] else None
-    except Exception:
-        return None
 
 
 # ---------- Main ----------
@@ -630,6 +695,9 @@ def main() -> None:
         seeded_channels=seeded,
         seeded_sticky=seeded_sticky,
         sticky_entries=len(sticky_map),
+        padding_start_mins=args.padding_start_mins,
+        padding_end_mins=args.padding_end_mins,
+        padding_live_only=not args.padding_all,
         runtime_version=RUNTIME_VERSION,
         build_version=BUILD_VERSION,
     )
@@ -643,6 +711,9 @@ def main() -> None:
         min_gap,
         args.align,
         _sticky_map=sticky_map,
+        padding_start_mins=args.padding_start_mins,
+        padding_end_mins=args.padding_end_mins,
+        padding_live_only=not args.padding_all,
     )
 
     by_ch: Dict[str, Dict[str, int]] = {}
