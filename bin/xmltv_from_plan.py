@@ -308,7 +308,7 @@ def build_programme_elements(
         prog_el = ET.SubElement(tv, "programme", **attrs)
 
         # Determine if this is a real event or placeholder.
-        is_placeholder = bool(p.is_placeholder) or (p.kind and p.kind.lower() != "event")
+        is_placeholder = bool(p.is_placeholder) or (p.kind and p.kind.lower() == "placeholder")
 
         if is_placeholder or not p.event_id:
             # Generic standby / filler slot.

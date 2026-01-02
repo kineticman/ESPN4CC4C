@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # --- Scheduler functions ---
 def run_refresh(source: str = "auto"):
-    """Run the database refresh script"""
+    """Run the database refresh script with detailed logging"""
     import time
     global last_refresh_info
 
@@ -47,35 +47,53 @@ def run_refresh(source: str = "auto"):
         last_refresh_info["last_auto_run"] = now_iso
 
     try:
-        logger.info("Starting scheduled database refresh...")
+        logger.info(f"Starting scheduled database refresh (source={source})...")
+        logger.info("Executing: python3 /app/bin/refresh_in_container.py")
+        
         result = subprocess.run(
             ["python3", "/app/bin/refresh_in_container.py"],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             timeout=3600,
+            cwd="/app"
         )
 
         duration = time.time() - start_time
         last_refresh_info["last_duration"] = f"{duration:.1f}s"
+        
+        # Log all output from refresh script
+        if result.stdout:
+            logger.info("=" * 60)
+            logger.info("REFRESH SCRIPT OUTPUT:")
+            logger.info("=" * 60)
+            for line in result.stdout.splitlines():
+                logger.info(f"  {line}")
+            logger.info("=" * 60)
 
         if result.returncode == 0:
-            logger.info("Database refresh completed successfully")
+            logger.info(f"Database refresh completed successfully (duration: {duration:.1f}s)")
             last_refresh_info["last_status"] = "success"
+            last_refresh_info["last_error"] = None
         else:
-            logger.error(f"Database refresh failed with code {result.returncode}")
+            logger.error(f"Database refresh FAILED with code {result.returncode} (duration: {duration:.1f}s)")
+            if result.stdout:
+                logger.error("Last 20 lines of output:")
+                for line in result.stdout.splitlines()[-20:]:
+                    logger.error(f"  {line}")
             last_refresh_info["last_status"] = "failed"
-            last_refresh_info["last_error"] = result.stderr[:500] if result.stderr else "Unknown error"
+            last_refresh_info["last_error"] = result.stdout[-500:] if result.stdout else "Unknown error"
     except subprocess.TimeoutExpired:
         logger.error("Database refresh timed out after 1 hour")
         last_refresh_info["last_status"] = "timeout"
         last_refresh_info["last_error"] = "Refresh timed out after 1 hour"
     except Exception as e:
-        logger.error(f"Error running database refresh: {e}")
+        logger.error(f"Error running database refresh: {e}", exc_info=True)
         last_refresh_info["last_status"] = "error"
         last_refresh_info["last_error"] = str(e)
 
 def run_vacuum(source: str = "auto"):
-    """Run the weekly VACUUM operation"""
+    """Run the weekly VACUUM operation with detailed logging"""
     import time
     global last_vacuum_info
     start_time = time.time()
@@ -93,32 +111,45 @@ def run_vacuum(source: str = "auto"):
         last_vacuum_info["last_auto_run"] = now_iso
 
     try:
-        logger.info("Starting scheduled VACUUM...")
+        logger.info(f"Starting scheduled VACUUM (source={source})...")
         db_path = os.getenv("DB", "/app/data/eplus_vc.sqlite3")
+        logger.info(f"Database: {db_path}")
+        
         result = subprocess.run(
             ["sqlite3", db_path, "PRAGMA wal_checkpoint(TRUNCATE); VACUUM;"],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             timeout=3600
         )
 
         duration = time.time() - start_time
         last_vacuum_info["last_duration"] = f"{duration:.1f}s"
+        
+        # Log output if any
+        if result.stdout:
+            logger.info("VACUUM output:")
+            for line in result.stdout.splitlines():
+                logger.info(f"  {line}")
 
         if result.returncode == 0:
-            logger.info("VACUUM completed successfully")
+            logger.info(f"VACUUM completed successfully (duration: {duration:.1f}s)")
             last_vacuum_info["last_status"] = "success"
             last_vacuum_info["last_error"] = None
         else:
-            logger.error("VACUUM failed")
+            logger.error(f"VACUUM FAILED with code {result.returncode}")
+            if result.stdout:
+                logger.error("VACUUM error output:")
+                for line in result.stdout.splitlines():
+                    logger.error(f"  {line}")
             last_vacuum_info["last_status"] = "failed"
-            last_vacuum_info["last_error"] = result.stderr[:500] if result.stderr else "VACUUM failed"
+            last_vacuum_info["last_error"] = result.stdout[:500] if result.stdout else "VACUUM failed"
     except subprocess.TimeoutExpired:
         logger.error("VACUUM timed out after 1 hour")
         last_vacuum_info["last_status"] = "timeout"
         last_vacuum_info["last_error"] = "VACUUM timed out after 1 hour"
     except Exception as e:
-        logger.error(f"Error running VACUUM: {e}")
+        logger.error(f"Error running VACUUM: {e}", exc_info=True)
         last_vacuum_info["last_status"] = "error"
         last_vacuum_info["last_error"] = str(e)
 
@@ -228,7 +259,10 @@ def start_scheduler() -> BackgroundScheduler:
         max_instances=1,
     )
     scheduler.start()
-    logger.info("Scheduler started with 5min misfire grace: refresh daily at 03:00, vacuum Sunday 03:10, log cleanup Sunday 03:30")
+    logger.info("Scheduler started with enhanced logging and 5min misfire grace")
+    logger.info("  - Refresh: daily at 03:00")
+    logger.info("  - VACUUM: Sunday 03:10")
+    logger.info("  - Log cleanup: Sunday 03:30")
     return scheduler
 
 @asynccontextmanager
