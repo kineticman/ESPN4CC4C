@@ -1424,7 +1424,7 @@ def get_filters_info():
             </style>
         </head>
         <body>
-            <h1>ðŸ“º ESPN4CC4C - Available Filter Options</h1>
+            <h1>ESPN4CC4C - Available Filter Options</h1>
             <div class='intro'>
                 <p>These values are from your current database. Use them in your <code>filters.ini</code> file.</p>
                 <p>JSON version: <a href="/filters/json">/filters/json</a></p>
@@ -1432,7 +1432,7 @@ def get_filters_info():
         """
 
         # Networks
-        html += "<h2>ðŸ“º Networks</h2><div class='section'>"
+        html += "<h2>Networks</h2><div class='section'>"
         for network, count in options["networks"]:
             html += f"<div class='item'>{network:<40} <span class='count'>({count:>4} events)</span></div>"
         html += "</div>"
@@ -1444,19 +1444,19 @@ def get_filters_info():
         html += "</div>"
 
         # Leagues
-        html += "<h2>ðŸ† Leagues</h2><div class='section'>"
+        html += "<h2>Leagues</h2><div class='section'>"
         for league, count in options["leagues"]:
             html += f"<div class='item'>{league:<40} <span class='count'>({count:>4} events)</span></div>"
         html += "</div>"
 
         # Event Types
-        html += "<h2>ðŸ“¡ Event Types</h2><div class='section'>"
+        html += "<h2>Event Types</h2><div class='section'>"
         for etype, count in options["event_types"]:
             html += f"<div class='item'>{etype:<40} <span class='count'>({count:>4} events)</span></div>"
         html += "</div>"
 
         # Packages
-        html += "<h2>ðŸ’° Packages</h2><div class='section'>"
+        html += "<h2>Packages</h2><div class='section'>"
         for pkg, count in options["packages"]:
             pkg_clean = pkg.replace('["', "").replace('"]', "").replace('", "', ", ")
             html += f"<div class='item'>{pkg_clean:<50} <span class='count'>({count:>4} events)</span></div>"
@@ -1465,7 +1465,7 @@ def get_filters_info():
         # Example usage
         html += """
         <div class='tip'>
-            <h3>ðŸ’¡ Example filters.ini Configuration</h3>
+            <h3>Example filters.ini Configuration</h3>
             <pre>
 [filters]
 # Professional sports only
@@ -2352,7 +2352,7 @@ async def admin_dashboard():
 </head>
 <body>
     <div class="container">
-        <h1>ðŸ”„ Database Maintenance</h1>
+        <h1>Database Maintenance</h1>
         <p class="subtitle">Monitor and control ESPN4CC4C database refresh and VACUUM</p>
 
         <div class="card">
@@ -2398,7 +2398,7 @@ async def admin_dashboard():
             {last_error_html}
             <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
                 <button class="refresh-btn" onclick="triggerRefresh()" id="refresh-btn" style="max-width: 260px;">
-                    ðŸ”„ Trigger Refresh Now
+                    Trigger Refresh Now
                 </button>
                 <p style="color: #888; font-size: 0.9em; margin: 0; max-width: 420px;">
                     Trigger a database refresh immediately. This will fetch the latest events from ESPN+ and update your channels.
@@ -2411,11 +2411,11 @@ async def admin_dashboard():
             <h2 style="margin-bottom: 15px;">Scheduled Runs</h2>
             <ul class="schedule-list">
                 <li class="schedule-item">
-                    <span>ðŸ“… Database Refresh</span>
+                    <span>Database Refresh</span>
                     <span class="timestamp">03:00 daily</span>
                 </li>
                 <li class="schedule-item">
-                    <span>ðŸ—„ï¸ Database VACUUM</span>
+                    <span>Database VACUUM</span>
                     <span class="timestamp">Sunday at 03:10</span>
                 </li>
             </ul>
@@ -2486,7 +2486,7 @@ async def admin_dashboard():
 
             <div style="margin-top: 20px;">
                 <button class="refresh-btn" onclick="triggerVacuum()" id="vacuum-btn" style="width: 100%;">
-                    ðŸ—„ï¸ Run VACUUM Now
+                    Run VACUUM Now
                 </button>
             </div>
         </div>
@@ -2510,7 +2510,7 @@ async def admin_dashboard():
 
                 if (response.ok) {{
                     status.className = 'success';
-                    status.textContent = 'âœ“ ' + data.message;
+                    status.textContent = '' + data.message;
                     status.style.display = 'block';
 
                     setTimeout(() => {{
@@ -2521,10 +2521,10 @@ async def admin_dashboard():
                 }}
             }} catch (error) {{
                 status.className = 'error';
-                status.textContent = 'âœ— Error: ' + error.message;
+                status.textContent = 'Error: ' + error.message;
                 status.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'ðŸ”„ Trigger Refresh Now';
+                btn.textContent = 'Trigger Refresh Now';
             }}
         }}
 
@@ -2545,7 +2545,7 @@ async def admin_dashboard():
 
                 if (response.ok) {{
                     status.className = 'success';
-                    status.textContent = 'âœ“ ' + data.message;
+                    status.textContent = '' + data.message;
                     status.style.display = 'block';
 
                     setTimeout(() => {{
@@ -2556,10 +2556,10 @@ async def admin_dashboard():
                 }}
             }} catch (error) {{
                 status.className = 'error';
-                status.textContent = 'âœ— Error: ' + error.message;
+                status.textContent = 'Error: ' + error.message;
                 status.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'ðŸ—„ï¸ Run VACUUM Now';
+                btn.textContent = 'Run VACUUM Now';
             }}
         }}
 

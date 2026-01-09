@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 """
-xmltv_from_plan.py
+xmltv_from_plan.py - Enhanced with fruitdeeplinks-style formatting
 
 Generate an XMLTV EPG from the ESPN4CC4C virtual-channel plan.
 
-This version is conservative about database columns so it works with the
-existing schema created by db_migrate.py. It *does not* depend on
-non-existent columns like `event_status`, and only uses fields that are
-guaranteed to exist.
-
-Key behaviour changes vs older versions:
-- Uses `plan_run.id` as the "plan id" and `plan_slot.plan_id` to link.
-- Derives "live" status from `events.is_reair` (0 => live, 1 => replay).
-- Uses the XMLTV <live> element for live status instead of a "Live" category.
-- Still adds a generic "ESPNCC4C" category for easy filtering on *real* events.
+Enhanced features:
+- Title format: "Sport: League - Matchup" (e.g., "Women's College Basketball: Wake Forest vs Stanford")
+- Description format: "Sport - (League) - Matchup - Available on Network"
+  (e.g., "Basketball - (Women's College Basketball) - Wake Forest vs Stanford - Available on ACCNX")
 """
 
 import argparse
@@ -62,16 +56,14 @@ class ProgrammeRow:
     feed_type: Optional[str]
 
 
-
 def get_latest_plan_id(conn: sqlite3.Connection) -> int:
     row = conn.execute("SELECT id FROM plan_run ORDER BY id DESC LIMIT 1").fetchone()
     if row is None:
-        raise SystemExit("No rows in plan_run – did you run build_plan?")
+        raise SystemExit("No rows in plan_run — did you run build_plan?")
     return int(row[0])
 
 
 def fetch_channels_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[ChannelRow]:
-    # Only pull channels that actually have slots in this plan.
     sql = """
     SELECT DISTINCT
         c.id         AS id,
@@ -96,7 +88,6 @@ def fetch_channels_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Chan
 
 
 def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[ProgrammeRow]:
-    # NOTE: We *only* reference columns that are known to exist in the current schema.
     sql = """
     SELECT
         ps.channel_id          AS channel_id,
@@ -163,10 +154,7 @@ def fetch_programmes_for_plan(conn: sqlite3.Connection, plan_id: int) -> List[Pr
 
 
 def parse_iso_utc(s: str) -> datetime:
-    """
-    Parse the ISO8601 timestamps we store in plan_run/plan_slot,
-    e.g. '2025-11-14T16:00:00+00:00' or with a trailing 'Z'.
-    """
+    """Parse ISO8601 timestamps."""
     if not s:
         raise ValueError("Empty datetime string")
     s2 = s.replace("Z", "+00:00")
@@ -177,7 +165,6 @@ def parse_iso_utc(s: str) -> datetime:
 
 
 def xmltv_time(dt: datetime) -> str:
-    # XMLTV expects "YYYYMMDDHHMMSS +0000"
     return dt.strftime("%Y%m%d%H%M%S %z")
 
 
@@ -193,13 +180,10 @@ def coerce_int(val: Any) -> Optional[int]:
 
 
 def is_live_event(p: ProgrammeRow) -> bool:
-    # Treat is_reair == 1 as replay, anything else as live for now.
     flag = coerce_int(p.is_reair)
     if flag is None:
-        # Unknown; be conservative and treat as *not* live if it's a placeholder.
         if p.is_placeholder:
             return False
-        # For real events with unknown flag, we lean toward live (legacy behaviour)
         return True
     return flag == 0
 
@@ -217,72 +201,15 @@ def uniq(seq: Iterable[str]) -> List[str]:
     return out
 
 
-
-
-def _append_unique_desc_part(bits: List[str], text: Optional[str]) -> None:
-    """Append text to bits if it's non-empty and not a near-duplicate.
-
-    We treat two strings as near-duplicates if:
-      * They are equal case-insensitively, OR
-      * One is a substring of the other (case-insensitive), OR
-      * Their token overlap (ignoring tiny words like "vs", "at") is high.
-    """
-    if not text:
-        return
-    t = text.strip()
-    if not t:
-        return
-
-    def _tokens(s: str) -> set:
-        # Normalize: lower, replace non-alnum with space, split
-        cleaned = []
-        for ch in s.lower():
-            cleaned.append(ch if ch.isalnum() else " ")
-        raw = "".join(cleaned).split()
-        # Drop very short/common connector words
-        stop = {"vs", "v", "at", "the", "and", "or"}
-        return {tok for tok in raw if len(tok) > 2 and tok not in stop}
-
-    t_low = t.lower()
-    t_tokens = _tokens(t)
-
-    for existing in bits:
-        e = existing.strip()
-        if not e:
-            continue
-        e_low = e.lower()
-
-        # Simple equality / substring checks
-        if t_low == e_low or t_low in e_low or e_low in t_low:
-            return
-
-        # Token overlap check
-        e_tokens = _tokens(e)
-        if e_tokens:
-            inter = t_tokens & e_tokens
-            # If the shorter string's tokens are mostly contained in the other,
-            # treat as duplicate (e.g. "Kraken vs. Blackhawks" vs
-            # "Seattle Kraken vs. Chicago Blackhawks").
-            min_len = min(len(t_tokens), len(e_tokens)) or 1
-            if len(inter) / min_len >= 0.7:
-                return
-
-    bits.append(t)
-
-
-
 def build_channel_elements(tv: ET.Element, channels: List[ChannelRow]) -> None:
     for ch in channels:
         ch_el = ET.SubElement(tv, "channel", id=str(ch.id))
-        # Primary display-name = channel name
         name_el = ET.SubElement(ch_el, "display-name")
         name_el.text = ch.name
 
-        # Second display-name = logical channel number (for clients that like it)
         chno_el = ET.SubElement(ch_el, "display-name")
         chno_el.text = str(ch.chno)
 
-        # Optional group_title / group_name
         if ch.group_name:
             grp_el = ET.SubElement(ch_el, "display-name")
             grp_el.text = ch.group_name
@@ -296,7 +223,7 @@ def build_programme_elements(
         try:
             start_dt = parse_iso_utc(p.start_utc)
             end_dt = parse_iso_utc(p.end_utc)
-        except Exception as exc:  # defensive
+        except Exception as exc:
             print(f"[xmltv] WARNING: bad datetime for event {p.event_id}: {exc}", file=sys.stderr)
             continue
 
@@ -307,101 +234,97 @@ def build_programme_elements(
         }
         prog_el = ET.SubElement(tv, "programme", **attrs)
 
-        # Determine if this is a real event or placeholder.
-        is_placeholder = bool(p.is_placeholder) or (p.kind and p.kind.lower() == "placeholder")
+        is_placeholder = bool(p.is_placeholder) or (p.kind and p.kind.lower() != "event")
 
         if is_placeholder or not p.event_id:
-            # Generic standby / filler slot.
-            # We deliberately ignore placeholder_reason for display text so
-            # things like "gap" don't leak into the guide.
+            # Placeholder
             title_el = ET.SubElement(prog_el, "title")
             title_el.text = "Standby"
 
             desc_el = ET.SubElement(prog_el, "desc")
-            desc_el.text = "Standby – no live event"
+            desc_el.text = "Standby — no live event"
 
-            # No categories for placeholders – we want them to stay out of
-            # category-based filters like "Sports" / "Soccer" etc.
             cats: List[str] = []
 
         else:
-            # Real event
-            title_text = p.title or "Untitled Event"
+            # Real event - build fruitdeeplinks-style title and description
+            raw_title = p.title or "Untitled Event"
+            sport = p.sport or ""
+            league = p.league_name or ""
+            network = p.network or "ESPN+"
+            
+            # Build title in format: "Sport: League - Matchup"
+            # Example: "Women's College Basketball: Wake Forest vs Stanford"
+            title_parts = []
+            if sport:
+                title_parts.append(sport)
+            if league and league != sport:
+                # Don't duplicate if league name contains sport name
+                if sport.lower() not in league.lower():
+                    title_parts.append(league)
+            
+            if title_parts:
+                title_text = f"{' - '.join(title_parts)}: {raw_title}"
+            else:
+                title_text = raw_title
+            
             title_el = ET.SubElement(prog_el, "title")
             title_el.text = title_text
 
+            # Add subtitle if present
             if p.subtitle:
                 sub_el = ET.SubElement(prog_el, "sub-title")
                 sub_el.text = p.subtitle
 
-            # --- FIXED DESCRIPTION LOGIC ---
-            # Prefer the ESPN summary, but if it's missing build something
-            # useful from other metadata so we don't end up with a blank <desc>.
-            desc_text: Optional[str] = None
+            # Build description in format: "Sport - (League) - Matchup - Available on Network"
+            # Example: "Basketball - (Women's College Basketball) - Wake Forest vs Stanford - Available on ACCNX"
+            desc_parts = []
+            
+            # First part: Sport
+            if sport:
+                desc_parts.append(sport)
+            
+            # Second part: (League) in parentheses if different from sport
+            if league and league != sport:
+                # Only add league in parens if it's substantively different from sport
+                if sport.lower() not in league.lower() or len(league) > len(sport) + 5:
+                    desc_parts.append(f"({league})")
+            
+            # Third part: The actual matchup/event
+            desc_parts.append(raw_title)
+            
+            # Fourth part: Available on Network
+            desc_parts.append(f"Available on {network}")
+            
+            desc_text = " - ".join(desc_parts)
+            
+            # Add feed name as additional context if present
+            if p.feed_name and p.feed_name.strip():
+                desc_text += f" • {p.feed_name}"
+            
+            # If ESPN provided a summary, append it on a new line
             if p.summary and p.summary.strip():
-                desc_text = p.summary.strip()
-            else:
-                bits: List[str] = []
+                desc_text += f"\n\n{p.summary.strip()}"
+            
+            desc_el = ET.SubElement(prog_el, "desc")
+            desc_el.text = desc_text
 
-                # Start with the title so we know what event this is
-                if title_text:
-                    _append_unique_desc_part(bits, title_text)
-
-                # Add feed name if present (e.g., "Bruins Broadcast", "Ducks Broadcast")
-                if p.feed_name:
-                    _append_unique_desc_part(bits, p.feed_name)
-
-                if p.league_name:
-                    _append_unique_desc_part(bits, p.league_name)
-
-                if p.network:
-                    _append_unique_desc_part(bits, p.network)
-
-                if p.sport and p.sport != p.league_name:
-                    _append_unique_desc_part(bits, p.sport)
-
-                # event_type is often "Regular Season", "Replay", etc.
-                # Explicitly *ignore* "UPCOMING" so it doesn't pollute the desc.
-                if p.event_type:
-                    et = p.event_type.strip()
-                    if et.upper() != "UPCOMING":
-                        _append_unique_desc_part(bits, et)
-
-                # If we have a subtitle that's not just a repeat/substring of the title
-                # or any other part, tack it on at the end.
-                if p.subtitle:
-                    _append_unique_desc_part(bits, p.subtitle)
-
-                if bits:
-                    desc_text = " • ".join(bits)
-
-            if desc_text:
-                desc_el = ET.SubElement(prog_el, "desc")
-                desc_el.text = desc_text
-            # --- END FIX ---
-
-            # Categories – comprehensive ESPN metadata tagging
+            # Categories — comprehensive ESPN metadata tagging
             live = is_live_event(p)
             kind = (getattr(p, "content_kind", None) or "").strip().lower()
 
-            # Fallback: if content_kind is missing, use has_competition as the primary signal
             if not kind:
                 has_comp = coerce_int(getattr(p, "has_competition", None))
                 
                 if has_comp == 1:
-                    # ESPN says this has a competition object = it's a sports event
                     kind = "sports_event"
                 elif (p.sport or p.league_name):
-                    # Has sport/league but no competition - likely a show
-                    # But double-check with pattern matching as fallback
                     title_lower = (p.title or "").lower()
                     sport_lower = (p.sport or "").lower()
                     
-                    # Check for game patterns
                     has_vs = " vs. " in title_lower or " vs " in title_lower
                     has_at = " @ " in title_lower
                     
-                    # Sport-specific event patterns (for sports without competition data)
                     sport_event_keywords = {
                         "tennis": ["court", "championship", "semifinal", "quarterfinal", "final", "round"],
                         "golf": ["round", "tournament", "championship"],
@@ -412,7 +335,6 @@ def build_programme_elements(
                     if sport_lower in sport_event_keywords:
                         has_sport_pattern = any(keyword in title_lower for keyword in sport_event_keywords[sport_lower])
                     
-                    # Check for show keywords
                     show_keywords = [
                         "sportscenter", "postgame", "countdown", "tonight", "kickoff",
                         "pregame", "in 60", "read & react", "fantasy focus", "get up",
@@ -427,75 +349,59 @@ def build_programme_elements(
 
             cats_raw: List[str] = []
 
-            # Always start with Sports for any sports-related content
             if kind in ("sports_event", "sports_show"):
                 cats_raw.append("Sports")
 
-            # Add sport type (Hockey, Football, Basketball, etc.)
             if p.sport:
                 cats_raw.append(p.sport)
 
-            # Add league/competition name (NHL, NFL, NCAA Football, etc.)
             if p.league_name:
                 cats_raw.append(p.league_name)
 
-            # Add package info first (ESPN+, ESPN3, etc.) so we can skip them as networks
             packages_set = set()
             if p.packages:
-                # packages is JSON array like '["ESPN_PLUS"]' or '["ESPN_PLUS","ESPN3"]'
                 import json
                 try:
                     pkg_list = json.loads(p.packages)
                     for pkg in pkg_list:
                         if pkg:
-                            # Normalize package names: ESPN_PLUS -> ESPN+
                             normalized = pkg.replace("_", " ").replace(" PLUS", "+")
                             packages_set.add(normalized)
                             cats_raw.append(normalized)
                 except:
                     pass
 
-            # Add network (ESPN, ESPN2, ESPNU, ACCN, etc.) - but skip if it's actually a package
             if p.network and p.network not in packages_set:
                 cats_raw.append(p.network)
 
-            # Add content type
             if kind == "sports_event":
                 cats_raw.append("Sports Event")
             elif kind == "sports_show":
                 cats_raw.append("Sports Talk")
 
-            # Add event type for REPLAY, but skip "LIVE" (we use <live/> tag instead) and "UPCOMING"
             if p.event_type:
                 et = p.event_type.strip().upper()
                 if et and et not in ("UPCOMING", "LIVE"):
                     cats_raw.append(et)
 
-            # Add language if non-English
             if p.language and p.language.lower() not in ("en", "eng", "english"):
                 cats_raw.append(p.language.upper())
 
-            # Tag everything non-placeholder with the project marker
             cats_raw.append("ESPN4CC4C")
 
-            # Dedupe while preserving order
             cats = [c for c in uniq(cats_raw) if c]
             
-            # Emit categories (if any)
             for cat in cats:
                 cat_el = ET.SubElement(prog_el, "category")
                 cat_el.text = cat
             
-            # Icon / artwork
             if p.image:
                 ET.SubElement(prog_el, "icon", src=p.image)
 
-            # Simple eventID-based URL – matches older behaviour.
             if p.event_id:
                 url_el = ET.SubElement(prog_el, "url")
                 url_el.text = f"videos://espn-plus/event?eventID={p.event_id}"
 
-            # XMLTV <live> flag – only emit when actually live.
             if live:
                 live_el = ET.SubElement(prog_el, "live")
                 live_el.text = "1"
