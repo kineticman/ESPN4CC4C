@@ -184,7 +184,12 @@ if filter_reset_run:
 
 # Decide ingest horizon
 initial_ingest_run = first_run or filter_reset_run
-days = 3 if initial_ingest_run else 1
+
+# Allow override via environment variable
+REFRESH_DAYS = int(env("REFRESH_DAYS", "3") or "3")  # Default 3 days for normal refresh
+INITIAL_DAYS = int(env("INITIAL_DAYS", "3") or "3")  # Default 3 days for first run
+
+days = INITIAL_DAYS if initial_ingest_run else REFRESH_DAYS
 
 if first_run:
     banner = "=== First Run: Initializing Database ==="

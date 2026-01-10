@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import asyncio
 import datetime as dt
 import json
 import os
@@ -6,14 +7,17 @@ import sqlite3
 import traceback
 import logging
 import subprocess
+import threading
+import time
 from typing import Dict, Any, Optional
 from urllib.parse import quote
 from contextlib import asynccontextmanager
+from collections import deque
 
 from fastapi import FastAPI, Request, HTTPException
 from pathlib import Path
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
-                               PlainTextResponse, RedirectResponse, Response)
+                               PlainTextResponse, RedirectResponse, Response, StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -21,9 +25,45 @@ from apscheduler.triggers.cron import CronTrigger
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+# Log buffer for live streaming
+log_lock = threading.Lock()
+log_seq = 0
+log_buffer = deque(maxlen=1000)  # Keep last 1000 log lines
+
+def append_log_line(line: str) -> int:
+    """Append a log line to the in-memory buffer and return its sequence number."""
+    global log_seq
+    if line is None:
+        return log_seq
+    line = str(line).rstrip("\n")
+    with log_lock:
+        log_seq += 1
+        log_buffer.append((log_seq, line))
+        return log_seq
+
+# Custom logging handler to capture all logs to buffer
+class LogBufferHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            append_log_line(msg)
+        except Exception:
+            self.handleError(record)
+
+# Add handler to root logger to capture all logs
+buffer_handler = LogBufferHandler()
+buffer_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
+logging.getLogger().addHandler(buffer_handler)
+
+# Add some startup logs
+logger.info("=" * 60)
+logger.info("ESPN4CC4C Virtual Channel Resolver Starting...")
+logger.info("=" * 60)
 
 # --- Scheduler functions ---
 def run_refresh(source: str = "auto"):
@@ -48,7 +88,10 @@ def run_refresh(source: str = "auto"):
 
     try:
         logger.info(f"Starting scheduled database refresh (source={source})...")
+        append_log_line(f"[{dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting refresh (source={source})")
+        
         logger.info("Executing: python3 /app/bin/refresh_in_container.py")
+        append_log_line("Executing: python3 /app/bin/refresh_in_container.py")
         
         result = subprocess.run(
             ["python3", "/app/bin/refresh_in_container.py"],
@@ -72,11 +115,13 @@ def run_refresh(source: str = "auto"):
             logger.info("=" * 60)
 
         if result.returncode == 0:
-            logger.info(f"Database refresh completed successfully (duration: {duration:.1f}s)")
+            msg = f"Database refresh completed successfully (duration: {duration:.1f}s)"
+            logger.info(msg)
             last_refresh_info["last_status"] = "success"
             last_refresh_info["last_error"] = None
         else:
-            logger.error(f"Database refresh FAILED with code {result.returncode} (duration: {duration:.1f}s)")
+            msg = f"Database refresh FAILED with code {result.returncode} (duration: {duration:.1f}s)"
+            logger.error(msg)
             if result.stdout:
                 logger.error("Last 20 lines of output:")
                 for line in result.stdout.splitlines()[-20:]:
@@ -84,11 +129,13 @@ def run_refresh(source: str = "auto"):
             last_refresh_info["last_status"] = "failed"
             last_refresh_info["last_error"] = result.stdout[-500:] if result.stdout else "Unknown error"
     except subprocess.TimeoutExpired:
-        logger.error("Database refresh timed out after 1 hour")
+        msg = "Database refresh timed out after 1 hour"
+        logger.error(msg)
         last_refresh_info["last_status"] = "timeout"
         last_refresh_info["last_error"] = "Refresh timed out after 1 hour"
     except Exception as e:
-        logger.error(f"Error running database refresh: {e}", exc_info=True)
+        msg = f"Error running database refresh: {e}"
+        logger.error(msg, exc_info=True)
         last_refresh_info["last_status"] = "error"
         last_refresh_info["last_error"] = str(e)
 
@@ -366,12 +413,224 @@ ADMIN_HTML_PATH = RESOLVER_DIR / "admin.html"
 
 @app.get("/admin")
 async def admin_index() -> HTMLResponse:
-    """Simple admin hub page linking to all the useful endpoints."""
-    try:
-        html = ADMIN_HTML_PATH.read_text(encoding="utf-8")
-    except Exception as e:
-        logger.error("Error reading admin.html: %s", e)
-        raise HTTPException(status_code=500, detail="Admin page template not found")
+    """Admin hub page with live logs."""
+    html = """<!DOCTYPE html>
+<html>
+<head>
+    <title>ESPN4CC4C Admin Hub</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            color: #fff;
+            margin-bottom: 15px;
+        }
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+        }
+        .link-item {
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 3px solid #2196f3;
+            transition: background 0.2s;
+        }
+        .link-item:hover {
+            background: #2a2a2a;
+        }
+        .link-item a {
+            color: #64b5f6;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .link-item a:hover {
+            color: #90caf9;
+        }
+        .link-desc {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        #log-container {
+            background: #020617;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 12px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #e5e7eb;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .log-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .log-status.live {
+            background: #22c55e;
+            color: #fff;
+        }
+        .log-status.disconnected {
+            background: #ef4444;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESPN4CC4C Admin Hub</h1>
+        <p class="subtitle">Control panel for your ESPN virtual channels</p>
+
+        <div class="card">
+            <h2>Quick Links</h2>
+            <div class="links-grid">
+                <div class="link-item">
+                    <a href="/admin/refresh">Database Maintenance</a>
+                    <div class="link-desc">Monitor refresh jobs, trigger manual updates, run VACUUM</div>
+                </div>
+                <div class="link-item">
+                    <a href="/setupfilters">Filter Setup Helper</a>
+                    <div class="link-desc">Configure event filters (leagues, networks, sports)</div>
+                </div>
+                <div class="link-item">
+                    <a href="/filters">Available Filter Options</a>
+                    <div class="link-desc">See what networks, leagues, and sports are in your database</div>
+                </div>
+                <div class="link-item">
+                    <a href="/out/filteraudit.html">Filter Audit Report</a>
+                    <div class="link-desc">Verify your filters are working correctly</div>
+                </div>
+                <div class="link-item">
+                    <a href="/out/epg.xml">EPG (XMLTV)</a>
+                    <div class="link-desc">Download electronic program guide XML</div>
+                </div>
+                <div class="link-item">
+                    <a href="/out/playlist.m3u">M3U Playlist</a>
+                    <div class="link-desc">Download channel playlist for your client</div>
+                </div>
+                <div class="link-item">
+                    <a href="/channels">Channel List (JSON)</a>
+                    <div class="link-desc">View all active channels as JSON</div>
+                </div>
+                <div class="link-item">
+                    <a href="/whatson_all">What's On (All Channels)</a>
+                    <div class="link-desc">Current event snapshot across all channels</div>
+                </div>
+                <div class="link-item">
+                    <a href="/health">Health Check</a>
+                    <div class="link-desc">API health status</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Live Logs <span class="log-status live" id="log-status">LIVE</span></h2>
+            <div id="log-container">Loading logs...</div>
+        </div>
+    </div>
+
+    <script>
+        let logEventSource = null;
+        const logContainer = document.getElementById('log-container');
+        const logStatus = document.getElementById('log-status');
+        const maxLogLines = 500;
+
+        async function loadInitialLogs() {
+            try {
+                const response = await fetch('/api/logs?count=100');
+                const data = await response.json();
+                logContainer.textContent = data.logs.join('');
+                scrollToBottom();
+            } catch (error) {
+                logContainer.textContent = 'Error loading logs: ' + error.message;
+            }
+        }
+
+        function setupLogStream() {
+            if (logEventSource) {
+                logEventSource.close();
+            }
+
+            logEventSource = new EventSource('/api/logs/stream?tail=0');
+
+            logEventSource.onopen = () => {
+                logStatus.textContent = 'LIVE';
+                logStatus.className = 'log-status live';
+            };
+
+            logEventSource.onerror = () => {
+                logStatus.textContent = 'DISCONNECTED';
+                logStatus.className = 'log-status disconnected';
+                
+                if (logEventSource) {
+                    logEventSource.close();
+                    logEventSource = null;
+                }
+                
+                setTimeout(setupLogStream, 5000);
+            };
+
+            logEventSource.addEventListener('log', (event) => {
+                const currentLines = logContainer.textContent.split('\\n').filter(l => l);
+                currentLines.push(event.data);
+                
+                if (currentLines.length > maxLogLines) {
+                    currentLines.shift();
+                }
+                
+                logContainer.textContent = currentLines.join('\\n') + '\\n';
+                scrollToBottom();
+            });
+
+            logEventSource.addEventListener('heartbeat', (event) => {
+                // Keep connection alive
+            });
+        }
+
+        function scrollToBottom() {
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        loadInitialLogs().then(() => {
+            setupLogStream();
+        });
+    </script>
+</body>
+</html>"""
     return HTMLResponse(html)
 
 
@@ -2490,6 +2749,11 @@ async def admin_dashboard():
                 </button>
             </div>
         </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h2 style="margin-bottom: 15px;">Live Logs <span style="color:#fbbf24;font-size:0.9em;" id="log-status"></span></h2>
+            <div id="log-container" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:15px;height:400px;overflow-y:auto;font-family:'Courier New',monospace;font-size:13px;"></div>
+        </div>
     </div>
 
     <script>
@@ -2563,6 +2827,68 @@ async def admin_dashboard():
             }}
         }}
 
+        // Live Logs
+        let logEventSource;
+
+        function setupLogStream() {{
+            if (logEventSource) logEventSource.close();
+
+            logEventSource = new EventSource('/api/logs/stream');
+            const container = document.getElementById('log-container');
+            const status = document.getElementById('log-status');
+
+            logEventSource.onmessage = (event) => {{
+                let lineText = '';
+                try {{
+                    const obj = JSON.parse(event.data);
+                    lineText = (obj && (obj.log ?? obj.line)) ? (obj.log ?? obj.line) : String(event.data || '');
+                }} catch (e) {{
+                    lineText = String(event.data || '');
+                }}
+
+                if (!lineText) return;
+
+                const line = document.createElement('div');
+                line.style.padding = '2px 0';
+                line.style.color = '#cbd5e1';
+                line.textContent = lineText;
+                container.appendChild(line);
+                container.scrollTop = container.scrollHeight;
+
+                // Keep only last 500 lines
+                while (container.children.length > 500) {{
+                    container.removeChild(container.firstChild);
+                }}
+            }};
+
+            logEventSource.addEventListener('ping', () => {{
+                // Keep-alive heartbeat
+            }});
+
+            logEventSource.onerror = () => {{
+                if (status) status.textContent = ' Reconnecting...';
+                setTimeout(setupLogStream, 5000);
+            }};
+
+            if (status) status.textContent = 'LIVE';
+        }}
+
+        async function loadInitialLogs() {{
+            try {{
+                const res = await fetch('/api/logs?count=100');
+                const data = await res.json();
+                const container = document.getElementById('log-container');
+                if (container) {{
+                    container.innerHTML = data.logs.map(log => 
+                        `<div style="padding:2px 0;color:#cbd5e1;">${{log}}</div>`
+                    ).join('');
+                    container.scrollTop = container.scrollHeight;
+                }}
+            }} catch (err) {{
+                console.error('Failed to load initial logs:', err);
+            }}
+        }}
+
         const lastRefreshStatus = '{status_class}';
         const lastVacuumStatus = '{vac_status_class}';
         if (lastRefreshStatus === 'running' || lastVacuumStatus === 'running') {{
@@ -2570,6 +2896,9 @@ async def admin_dashboard():
                 window.location.reload();
             }}, 30000);
         }}
+
+        // Initialize logs on page load
+        loadInitialLogs().then(() => setupLogStream());
     </script>
 </body>
 </html>
@@ -2595,6 +2924,82 @@ async def trigger_vacuum():
         "status": "success",
         "message": "VACUUM started in background. Check logs or refresh this page in a moment."
     }
+
+@app.get("/api/logs")
+async def api_logs(request: Request):
+    """Get recent logs"""
+    count = int(request.query_params.get("count", 100))
+    with log_lock:
+        logs = [l for (_, l) in list(log_buffer)[-count:]]
+    return JSONResponse({"logs": logs, "count": len(log_buffer)})
+
+
+@app.get("/api/logs/stream")
+async def api_logs_stream(request: Request):
+    """
+    Stream logs via Server-Sent Events (SSE).
+    
+    IMPORTANT: log_buffer is a fixed-size deque, so we track a monotonic seq per line.
+    The client stays connected and receives heartbeats even if no logs are produced.
+    """
+    async def generate():
+        # Optional query params:
+        #  - tail: send last N lines immediately on connect
+        #  - since: start streaming after a specific seq
+        tail = 0
+        since = 0
+        try:
+            tail = int(request.query_params.get("tail", "0") or "0")
+            since = int(request.query_params.get("since", "0") or "0")
+        except Exception:
+            tail = 0
+            since = 0
+
+        last_seq = since
+        heartbeat_ts = time.time()
+
+        # initial comment so proxies flush headers quickly
+        yield ": connected\n\n"
+
+        # Optional tail send
+        if tail and tail > 0:
+            with log_lock:
+                snapshot = list(log_buffer)[-tail:]
+            for seq, line in snapshot:
+                yield f"event: log\ndata: {line}\n\n"
+                last_seq = max(last_seq, seq)
+
+        while True:
+            # Check if client disconnected
+            if await request.is_disconnected():
+                break
+                
+            out = []
+            with log_lock:
+                snapshot = list(log_buffer)
+
+            for seq, line in snapshot:
+                if seq > last_seq:
+                    out.append((seq, line))
+                    last_seq = seq
+
+            if out:
+                for seq, line in out:
+                    yield f"event: log\ndata: {line}\n\n"
+
+            # Heartbeat to prevent idle timeouts
+            if (time.time() - heartbeat_ts) >= 15:
+                yield "event: ping\ndata: {}\n\n"
+                heartbeat_ts = time.time()
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
+
 
 @app.post("/admin/refresh/trigger")
 async def trigger_refresh():
