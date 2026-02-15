@@ -107,8 +107,9 @@
         <p>Outputs you point Channels DVR or other clients at.</p>
         <ul class="link-list">
           <li><a href="/out/epg.xml">/out/epg.xml</a> – XMLTV EPG</li>
-          <li><a href="/out/playlist.m3u">/out/playlist.m3u</a> – standard M3U</li>
-          <li><a href="/out/playlist.ch4c.m3u">/out/playlist.ch4c.m3u</a> – experimental CH4C M3U</li>
+          <li><a href="/out/playlist.m3u">/out/playlist.m3u</a> – Chrome Capture M3U</li>
+          <li><a href="/out/playlist.ch4c.m3u">/out/playlist.ch4c.m3u</a> – Channels4Chrome M3U</li>
+          <li><a href="/out/playlist.prismcast.m3u">/out/playlist.prismcast.m3u</a> – PrismCast M3U (native apps)</li>
         </ul>
       </div>
 
@@ -140,6 +141,22 @@
           <li><code>/api/test/{lane}</code> – deeplink test matrix</li>
           <li><code>/vc/{lane}</code> – main resolver endpoint</li>
           <li><code>/vc/{lane}/debug</code> – resolver debug JSON</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Live Logs <span class="pill">Debug</span></h2>
+        <p>Real-time application logs with auto-refresh.</p>
+        <ul class="link-list">
+          <li><a href="/admin/logs">/admin/logs</a> – live log viewer (last 2500 lines)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Environment <span class="pill">Config</span></h2>
+        <p>View current environment configuration.</p>
+        <ul class="link-list">
+          <li><a href="/admin/env">/admin/env</a> – environment variables</li>
         </ul>
       </div>
 

@@ -24,6 +24,13 @@ try:
 except Exception:
     DEFAULT_CH4C_PORT = 2442
 
+# PrismCast (BETA) - optional, native app launcher
+DEFAULT_PCAST_HOST = _os.getenv("PCAST_SERVER", "127.0.0.1")
+try:
+    DEFAULT_PCAST_PORT = int(_os.getenv("PCAST_PORT", "5589"))
+except Exception:
+    DEFAULT_PCAST_PORT = 5589
+
 # M3U cosmetics
 M3U_GROUP_TITLE = _os.getenv("M3U_GROUP_TITLE", "ESPN+ VC")
 
@@ -72,6 +79,26 @@ def m3u_entry_ch4c(ch_id, chno, name, resolver_base, ch4c_host, ch4c_port, only_
     )
 
 
+def m3u_entry_prismcast(ch_id, chno, name, resolver_base, pcast_host, pcast_port, only_live):
+    """Generate PrismCast style M3U entry with /play endpoint and raw URL parameter
+    
+    PrismCast pattern: http://PCAST_HOST:PCAST_PORT/play?url=RAW_API_URL
+    Key differences from CC4C/CH4C:
+    - Uses /play endpoint (not /stream)
+    - Does NOT URL-encode the API URL parameter
+    - PrismCast can auto-launch native apps based on deeplink domain
+    """
+    tail = f"/vc/{ch_id}" + ("?only_live=1" if only_live else "")
+    raw_url = f"{resolver_base}{tail}"
+    # NOTE: No URL encoding - PrismCast handles raw URLs
+    pcast_url = f"http://{pcast_host}:{pcast_port}/play?url={raw_url}"
+    return (
+        f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{name}" tvg-chno="{chno}" '
+        f'group-title="{M3U_GROUP_TITLE}",{name}\n'
+        f"{pcast_url}"
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True)
@@ -81,6 +108,8 @@ def main():
     ap.add_argument("--cc-port", type=int, default=DEFAULT_CC_PORT)
     ap.add_argument("--ch4c-host", default=DEFAULT_CH4C_HOST)
     ap.add_argument("--ch4c-port", type=int, default=DEFAULT_CH4C_PORT)
+    ap.add_argument("--pcast-host", default=DEFAULT_PCAST_HOST)
+    ap.add_argument("--pcast-port", type=int, default=DEFAULT_PCAST_PORT)
     ap.add_argument("--only-live", action="store_true", default=False)
     args = ap.parse_args()
 
@@ -88,9 +117,10 @@ def main():
     pid = latest_plan_id(conn)
     chans = load_channels(conn) if pid is not None else []
 
-    # Build both M3U variants
+    # Build all three M3U variants
     body_cc = ["#EXTM3U"]
     body_ch4c = ["#EXTM3U"]
+    body_pcast = ["#EXTM3U"]
     
     if chans:
         for ch in chans:
@@ -113,6 +143,17 @@ def main():
                     args.resolver_base,
                     args.ch4c_host,
                     args.ch4c_port,
+                    args.only_live,
+                )
+            )
+            body_pcast.append(
+                m3u_entry_prismcast(
+                    ch["id"],
+                    ch["chno"],
+                    ch["name"],
+                    args.resolver_base,
+                    args.pcast_host,
+                    args.pcast_port,
                     args.only_live,
                 )
             )
@@ -145,6 +186,17 @@ def main():
                     args.only_live,
                 )
             )
+            body_pcast.append(
+                m3u_entry_prismcast(
+                    cid,
+                    chno,
+                    name,
+                    args.resolver_base,
+                    args.pcast_host,
+                    args.pcast_port,
+                    args.only_live,
+                )
+            )
 
     # Write standard CC version
     with open(args.out, "w", encoding="utf-8") as f:
@@ -155,10 +207,16 @@ def main():
     with open(ch4c_out, "w", encoding="utf-8") as f:
         f.write("\n".join(body_ch4c) + "\n")
 
+    # Write PrismCast version (replace .m3u extension with .prismcast.m3u)
+    pcast_out = args.out.replace(".m3u", ".prismcast.m3u")
+    with open(pcast_out, "w", encoding="utf-8") as f:
+        f.write("\n".join(body_pcast) + "\n")
+
     print(
         f'{{"ts":"{datetime.now(timezone.utc).isoformat()}","mod":"m3u_from_plan",'
         f'"event":"m3u_written","plan_id":{pid if pid is not None else "null"},'
-        f'"out":"{args.out}","ch4c_out":"{ch4c_out}","channels":{len(chans) if chans else DEFAULT_LANES}}}'
+        f'"out":"{args.out}","ch4c_out":"{ch4c_out}","pcast_out":"{pcast_out}",'
+        f'"channels":{len(chans) if chans else DEFAULT_LANES}}}'
     )
 
 

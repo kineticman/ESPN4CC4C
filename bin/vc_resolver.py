@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import asyncio
 import datetime as dt
 import json
 import os
@@ -7,67 +6,71 @@ import sqlite3
 import traceback
 import logging
 import subprocess
-import threading
-import time
 from typing import Dict, Any, Optional
 from urllib.parse import quote
 from contextlib import asynccontextmanager
-from collections import deque
 
 from fastapi import FastAPI, Request, HTTPException
 from pathlib import Path
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
-                               PlainTextResponse, RedirectResponse, Response, StreamingResponse)
+                               PlainTextResponse, RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 # Configure logging
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%H:%M:%S'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Log buffer for live streaming
-log_lock = threading.Lock()
-log_seq = 0
-log_buffer = deque(maxlen=1000)  # Keep last 1000 log lines
+# In-memory log buffer for live log viewing (simple thread-safe deque)
+from collections import deque
+import threading
 
-def append_log_line(line: str) -> int:
-    """Append a log line to the in-memory buffer and return its sequence number."""
-    global log_seq
-    if line is None:
-        return log_seq
-    line = str(line).rstrip("\n")
-    with log_lock:
-        log_seq += 1
-        log_buffer.append((log_seq, line))
-        return log_seq
+class SimpleLogBuffer:
+    """Thread-safe ring buffer for keeping recent logs in memory"""
+    def __init__(self, maxlen=2500):
+        self.buffer = deque(maxlen=maxlen)
+        self.lock = threading.Lock()
+    
+    def add(self, line):
+        with self.lock:
+            self.buffer.append(line)
+    
+    def get_all(self):
+        with self.lock:
+            return list(self.buffer)
 
-# Custom logging handler to capture all logs to buffer
-class LogBufferHandler(logging.Handler):
+# Global log buffer
+log_buffer = SimpleLogBuffer(maxlen=2500)
+
+# Custom handler that also adds to buffer
+class BufferedHandler(logging.StreamHandler):
     def emit(self, record):
+        super().emit(record)  # Normal stdout logging
         try:
             msg = self.format(record)
-            append_log_line(msg)
-        except Exception:
-            self.handleError(record)
+            log_buffer.add(msg)
+        except:
+            pass
 
-# Add handler to root logger to capture all logs
-buffer_handler = LogBufferHandler()
-buffer_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
-logging.getLogger().addHandler(buffer_handler)
-
-# Add some startup logs
-logger.info("=" * 60)
-logger.info("ESPN4CC4C Virtual Channel Resolver Starting...")
-logger.info("=" * 60)
+# Replace root logger handler with buffered version
+root_logger = logging.getLogger()
+# Remove existing handlers
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+# Add our buffered handler
+buffered_handler = BufferedHandler()
+buffered_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(buffered_handler)
+root_logger.setLevel(logging.INFO)
 
 # --- Scheduler functions ---
 def run_refresh(source: str = "auto"):
-    """Run the database refresh script with detailed logging"""
+    """Run the database refresh script"""
     import time
     global last_refresh_info
 
@@ -87,60 +90,35 @@ def run_refresh(source: str = "auto"):
         last_refresh_info["last_auto_run"] = now_iso
 
     try:
-        logger.info(f"Starting scheduled database refresh (source={source})...")
-        append_log_line(f"[{dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting refresh (source={source})")
-        
-        logger.info("Executing: python3 /app/bin/refresh_in_container.py")
-        append_log_line("Executing: python3 /app/bin/refresh_in_container.py")
-        
+        logger.info("Starting scheduled database refresh...")
         result = subprocess.run(
             ["python3", "/app/bin/refresh_in_container.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            capture_output=True,
             text=True,
             timeout=3600,
-            cwd="/app"
         )
 
         duration = time.time() - start_time
         last_refresh_info["last_duration"] = f"{duration:.1f}s"
-        
-        # Log all output from refresh script
-        if result.stdout:
-            logger.info("=" * 60)
-            logger.info("REFRESH SCRIPT OUTPUT:")
-            logger.info("=" * 60)
-            for line in result.stdout.splitlines():
-                logger.info(f"  {line}")
-            logger.info("=" * 60)
 
         if result.returncode == 0:
-            msg = f"Database refresh completed successfully (duration: {duration:.1f}s)"
-            logger.info(msg)
+            logger.info("Database refresh completed successfully")
             last_refresh_info["last_status"] = "success"
-            last_refresh_info["last_error"] = None
         else:
-            msg = f"Database refresh FAILED with code {result.returncode} (duration: {duration:.1f}s)"
-            logger.error(msg)
-            if result.stdout:
-                logger.error("Last 20 lines of output:")
-                for line in result.stdout.splitlines()[-20:]:
-                    logger.error(f"  {line}")
+            logger.error(f"Database refresh failed with code {result.returncode}")
             last_refresh_info["last_status"] = "failed"
-            last_refresh_info["last_error"] = result.stdout[-500:] if result.stdout else "Unknown error"
+            last_refresh_info["last_error"] = result.stderr[:500] if result.stderr else "Unknown error"
     except subprocess.TimeoutExpired:
-        msg = "Database refresh timed out after 1 hour"
-        logger.error(msg)
+        logger.error("Database refresh timed out after 1 hour")
         last_refresh_info["last_status"] = "timeout"
         last_refresh_info["last_error"] = "Refresh timed out after 1 hour"
     except Exception as e:
-        msg = f"Error running database refresh: {e}"
-        logger.error(msg, exc_info=True)
+        logger.error(f"Error running database refresh: {e}")
         last_refresh_info["last_status"] = "error"
         last_refresh_info["last_error"] = str(e)
 
 def run_vacuum(source: str = "auto"):
-    """Run the weekly VACUUM operation with detailed logging"""
+    """Run the weekly VACUUM operation"""
     import time
     global last_vacuum_info
     start_time = time.time()
@@ -158,45 +136,32 @@ def run_vacuum(source: str = "auto"):
         last_vacuum_info["last_auto_run"] = now_iso
 
     try:
-        logger.info(f"Starting scheduled VACUUM (source={source})...")
+        logger.info("Starting scheduled VACUUM...")
         db_path = os.getenv("DB", "/app/data/eplus_vc.sqlite3")
-        logger.info(f"Database: {db_path}")
-        
         result = subprocess.run(
             ["sqlite3", db_path, "PRAGMA wal_checkpoint(TRUNCATE); VACUUM;"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            capture_output=True,
             text=True,
             timeout=3600
         )
 
         duration = time.time() - start_time
         last_vacuum_info["last_duration"] = f"{duration:.1f}s"
-        
-        # Log output if any
-        if result.stdout:
-            logger.info("VACUUM output:")
-            for line in result.stdout.splitlines():
-                logger.info(f"  {line}")
 
         if result.returncode == 0:
-            logger.info(f"VACUUM completed successfully (duration: {duration:.1f}s)")
+            logger.info("VACUUM completed successfully")
             last_vacuum_info["last_status"] = "success"
             last_vacuum_info["last_error"] = None
         else:
-            logger.error(f"VACUUM FAILED with code {result.returncode}")
-            if result.stdout:
-                logger.error("VACUUM error output:")
-                for line in result.stdout.splitlines():
-                    logger.error(f"  {line}")
+            logger.error("VACUUM failed")
             last_vacuum_info["last_status"] = "failed"
-            last_vacuum_info["last_error"] = result.stdout[:500] if result.stdout else "VACUUM failed"
+            last_vacuum_info["last_error"] = result.stderr[:500] if result.stderr else "VACUUM failed"
     except subprocess.TimeoutExpired:
         logger.error("VACUUM timed out after 1 hour")
         last_vacuum_info["last_status"] = "timeout"
         last_vacuum_info["last_error"] = "VACUUM timed out after 1 hour"
     except Exception as e:
-        logger.error(f"Error running VACUUM: {e}", exc_info=True)
+        logger.error(f"Error running VACUUM: {e}")
         last_vacuum_info["last_status"] = "error"
         last_vacuum_info["last_error"] = str(e)
 
@@ -275,41 +240,26 @@ def cleanup_old_logs(source: str = "auto"):
 def start_scheduler() -> BackgroundScheduler:
     """Initialize and start the background scheduler"""
     scheduler = BackgroundScheduler()
-    
-    # Add jobs with misfire_grace_time to handle container CPU contention
-    # If a job misses its scheduled time, it will still run if we're within the grace period
     scheduler.add_job(
         run_refresh,
         CronTrigger(hour=3, minute=0),
         id='refresh_job',
         kwargs={"source": "auto"},
-        misfire_grace_time=300,  # 5 minute grace period for container CPU contention
-        coalesce=True,  # If multiple misfires, only run once
-        max_instances=1,  # Prevent overlapping runs
     )
     scheduler.add_job(
         run_vacuum,
         CronTrigger(day_of_week='sun', hour=3, minute=10),
         id='vacuum_job',
         kwargs={"source": "auto"},
-        misfire_grace_time=300,  # 5 minute grace period
-        coalesce=True,
-        max_instances=1,
     )
     scheduler.add_job(
         cleanup_old_logs,
         CronTrigger(day_of_week='sun', hour=3, minute=30),
         id='log_cleanup_job',
         kwargs={"source": "auto"},
-        misfire_grace_time=300,  # 5 minute grace period
-        coalesce=True,
-        max_instances=1,
     )
     scheduler.start()
-    logger.info("Scheduler started with enhanced logging and 5min misfire grace")
-    logger.info("  - Refresh: daily at 03:00")
-    logger.info("  - VACUUM: Sunday 03:10")
-    logger.info("  - Log cleanup: Sunday 03:30")
+    logger.info("Scheduler started: refresh daily at 03:00, vacuum Sunday 03:10, log cleanup Sunday 03:30")
     return scheduler
 
 @asynccontextmanager
@@ -413,224 +363,12 @@ ADMIN_HTML_PATH = RESOLVER_DIR / "admin.html"
 
 @app.get("/admin")
 async def admin_index() -> HTMLResponse:
-    """Admin hub page with live logs."""
-    html = """<!DOCTYPE html>
-<html>
-<head>
-    <title>ESPN4CC4C Admin Hub</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #0f0f0f;
-            color: #e0e0e0;
-            padding: 20px;
-            line-height: 1.6;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: #fff;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            color: #888;
-            margin-bottom: 30px;
-        }
-        .card {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .card h2 {
-            color: #fff;
-            margin-bottom: 15px;
-        }
-        .links-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 12px;
-        }
-        .link-item {
-            background: #252525;
-            padding: 15px;
-            border-radius: 6px;
-            border-left: 3px solid #2196f3;
-            transition: background 0.2s;
-        }
-        .link-item:hover {
-            background: #2a2a2a;
-        }
-        .link-item a {
-            color: #64b5f6;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .link-item a:hover {
-            color: #90caf9;
-        }
-        .link-desc {
-            color: #888;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-        #log-container {
-            background: #020617;
-            border: 1px solid #374151;
-            border-radius: 6px;
-            padding: 12px;
-            height: 400px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            color: #e5e7eb;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        .log-status {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-        .log-status.live {
-            background: #22c55e;
-            color: #fff;
-        }
-        .log-status.disconnected {
-            background: #ef4444;
-            color: #fff;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>ESPN4CC4C Admin Hub</h1>
-        <p class="subtitle">Control panel for your ESPN virtual channels</p>
-
-        <div class="card">
-            <h2>Quick Links</h2>
-            <div class="links-grid">
-                <div class="link-item">
-                    <a href="/admin/refresh">Database Maintenance</a>
-                    <div class="link-desc">Monitor refresh jobs, trigger manual updates, run VACUUM</div>
-                </div>
-                <div class="link-item">
-                    <a href="/setupfilters">Filter Setup Helper</a>
-                    <div class="link-desc">Configure event filters (leagues, networks, sports)</div>
-                </div>
-                <div class="link-item">
-                    <a href="/filters">Available Filter Options</a>
-                    <div class="link-desc">See what networks, leagues, and sports are in your database</div>
-                </div>
-                <div class="link-item">
-                    <a href="/out/filteraudit.html">Filter Audit Report</a>
-                    <div class="link-desc">Verify your filters are working correctly</div>
-                </div>
-                <div class="link-item">
-                    <a href="/out/epg.xml">EPG (XMLTV)</a>
-                    <div class="link-desc">Download electronic program guide XML</div>
-                </div>
-                <div class="link-item">
-                    <a href="/out/playlist.m3u">M3U Playlist</a>
-                    <div class="link-desc">Download channel playlist for your client</div>
-                </div>
-                <div class="link-item">
-                    <a href="/channels">Channel List (JSON)</a>
-                    <div class="link-desc">View all active channels as JSON</div>
-                </div>
-                <div class="link-item">
-                    <a href="/whatson_all">What's On (All Channels)</a>
-                    <div class="link-desc">Current event snapshot across all channels</div>
-                </div>
-                <div class="link-item">
-                    <a href="/health">Health Check</a>
-                    <div class="link-desc">API health status</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Live Logs <span class="log-status live" id="log-status">LIVE</span></h2>
-            <div id="log-container">Loading logs...</div>
-        </div>
-    </div>
-
-    <script>
-        let logEventSource = null;
-        const logContainer = document.getElementById('log-container');
-        const logStatus = document.getElementById('log-status');
-        const maxLogLines = 500;
-
-        async function loadInitialLogs() {
-            try {
-                const response = await fetch('/api/logs?count=100');
-                const data = await response.json();
-                logContainer.textContent = data.logs.join('');
-                scrollToBottom();
-            } catch (error) {
-                logContainer.textContent = 'Error loading logs: ' + error.message;
-            }
-        }
-
-        function setupLogStream() {
-            if (logEventSource) {
-                logEventSource.close();
-            }
-
-            logEventSource = new EventSource('/api/logs/stream?tail=0');
-
-            logEventSource.onopen = () => {
-                logStatus.textContent = 'LIVE';
-                logStatus.className = 'log-status live';
-            };
-
-            logEventSource.onerror = () => {
-                logStatus.textContent = 'DISCONNECTED';
-                logStatus.className = 'log-status disconnected';
-                
-                if (logEventSource) {
-                    logEventSource.close();
-                    logEventSource = null;
-                }
-                
-                setTimeout(setupLogStream, 5000);
-            };
-
-            logEventSource.addEventListener('log', (event) => {
-                const currentLines = logContainer.textContent.split('\\n').filter(l => l);
-                currentLines.push(event.data);
-                
-                if (currentLines.length > maxLogLines) {
-                    currentLines.shift();
-                }
-                
-                logContainer.textContent = currentLines.join('\\n') + '\\n';
-                scrollToBottom();
-            });
-
-            logEventSource.addEventListener('heartbeat', (event) => {
-                // Keep connection alive
-            });
-        }
-
-        function scrollToBottom() {
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
-
-        loadInitialLogs().then(() => {
-            setupLogStream();
-        });
-    </script>
-</body>
-</html>"""
+    """Simple admin hub page linking to all the useful endpoints."""
+    try:
+        html = ADMIN_HTML_PATH.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error("Error reading admin.html: %s", e)
+        raise HTTPException(status_code=500, detail="Admin page template not found")
     return HTMLResponse(html)
 
 
@@ -1098,6 +836,28 @@ def playlist_m3u():
     if os.path.exists(p):
         return FileResponse(
             p, media_type="application/x-mpegURL", filename="playlist.m3u"
+        )
+    return Response("# not found\n", status_code=404, media_type="text/plain")
+
+
+@app.get("/playlist.ch4c.m3u")
+def playlist_ch4c_m3u():
+    """Serve CH4C variant M3U from /out/playlist.ch4c.m3u."""
+    p = os.path.join(OUT_DIR, "playlist.ch4c.m3u")
+    if os.path.exists(p):
+        return FileResponse(
+            p, media_type="application/x-mpegURL", filename="playlist.ch4c.m3u"
+        )
+    return Response("# not found\n", status_code=404, media_type="text/plain")
+
+
+@app.get("/playlist.prismcast.m3u")
+def playlist_prismcast_m3u():
+    """Serve PrismCast variant M3U from /out/playlist.prismcast.m3u."""
+    p = os.path.join(OUT_DIR, "playlist.prismcast.m3u")
+    if os.path.exists(p):
+        return FileResponse(
+            p, media_type="application/x-mpegURL", filename="playlist.prismcast.m3u"
         )
     return Response("# not found\n", status_code=404, media_type="text/plain")
 
@@ -1683,7 +1443,7 @@ def get_filters_info():
             </style>
         </head>
         <body>
-            <h1>ESPN4CC4C - Available Filter Options</h1>
+            <h1>ðŸ“º ESPN4CC4C - Available Filter Options</h1>
             <div class='intro'>
                 <p>These values are from your current database. Use them in your <code>filters.ini</code> file.</p>
                 <p>JSON version: <a href="/filters/json">/filters/json</a></p>
@@ -1691,7 +1451,7 @@ def get_filters_info():
         """
 
         # Networks
-        html += "<h2>Networks</h2><div class='section'>"
+        html += "<h2>ðŸ“º Networks</h2><div class='section'>"
         for network, count in options["networks"]:
             html += f"<div class='item'>{network:<40} <span class='count'>({count:>4} events)</span></div>"
         html += "</div>"
@@ -1703,19 +1463,19 @@ def get_filters_info():
         html += "</div>"
 
         # Leagues
-        html += "<h2>Leagues</h2><div class='section'>"
+        html += "<h2>ðŸ† Leagues</h2><div class='section'>"
         for league, count in options["leagues"]:
             html += f"<div class='item'>{league:<40} <span class='count'>({count:>4} events)</span></div>"
         html += "</div>"
 
         # Event Types
-        html += "<h2>Event Types</h2><div class='section'>"
+        html += "<h2>ðŸ“¡ Event Types</h2><div class='section'>"
         for etype, count in options["event_types"]:
             html += f"<div class='item'>{etype:<40} <span class='count'>({count:>4} events)</span></div>"
         html += "</div>"
 
         # Packages
-        html += "<h2>Packages</h2><div class='section'>"
+        html += "<h2>ðŸ’° Packages</h2><div class='section'>"
         for pkg, count in options["packages"]:
             pkg_clean = pkg.replace('["', "").replace('"]', "").replace('", "', ", ")
             html += f"<div class='item'>{pkg_clean:<50} <span class='count'>({count:>4} events)</span></div>"
@@ -1724,7 +1484,7 @@ def get_filters_info():
         # Example usage
         html += """
         <div class='tip'>
-            <h3>Example filters.ini Configuration</h3>
+            <h3>ðŸ’¡ Example filters.ini Configuration</h3>
             <pre>
 [filters]
 # Professional sports only
@@ -2745,14 +2505,9 @@ async def admin_dashboard():
 
             <div style="margin-top: 20px;">
                 <button class="refresh-btn" onclick="triggerVacuum()" id="vacuum-btn" style="width: 100%;">
-                    Run VACUUM Now
+                    ðŸ—„ï¸ Run VACUUM Now
                 </button>
             </div>
-        </div>
-
-        <div class="card" style="margin-top: 20px;">
-            <h2 style="margin-bottom: 15px;">Live Logs <span style="color:#fbbf24;font-size:0.9em;" id="log-status"></span></h2>
-            <div id="log-container" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:15px;height:400px;overflow-y:auto;font-family:'Courier New',monospace;font-size:13px;"></div>
         </div>
     </div>
 
@@ -2774,7 +2529,7 @@ async def admin_dashboard():
 
                 if (response.ok) {{
                     status.className = 'success';
-                    status.textContent = '' + data.message;
+                    status.textContent = 'âœ“ ' + data.message;
                     status.style.display = 'block';
 
                     setTimeout(() => {{
@@ -2785,7 +2540,7 @@ async def admin_dashboard():
                 }}
             }} catch (error) {{
                 status.className = 'error';
-                status.textContent = 'Error: ' + error.message;
+                status.textContent = 'âœ— Error: ' + error.message;
                 status.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'Trigger Refresh Now';
@@ -2809,7 +2564,7 @@ async def admin_dashboard():
 
                 if (response.ok) {{
                     status.className = 'success';
-                    status.textContent = '' + data.message;
+                    status.textContent = 'âœ“ ' + data.message;
                     status.style.display = 'block';
 
                     setTimeout(() => {{
@@ -2820,72 +2575,10 @@ async def admin_dashboard():
                 }}
             }} catch (error) {{
                 status.className = 'error';
-                status.textContent = 'Error: ' + error.message;
+                status.textContent = 'âœ— Error: ' + error.message;
                 status.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Run VACUUM Now';
-            }}
-        }}
-
-        // Live Logs
-        let logEventSource;
-
-        function setupLogStream() {{
-            if (logEventSource) logEventSource.close();
-
-            logEventSource = new EventSource('/api/logs/stream');
-            const container = document.getElementById('log-container');
-            const status = document.getElementById('log-status');
-
-            logEventSource.onmessage = (event) => {{
-                let lineText = '';
-                try {{
-                    const obj = JSON.parse(event.data);
-                    lineText = (obj && (obj.log ?? obj.line)) ? (obj.log ?? obj.line) : String(event.data || '');
-                }} catch (e) {{
-                    lineText = String(event.data || '');
-                }}
-
-                if (!lineText) return;
-
-                const line = document.createElement('div');
-                line.style.padding = '2px 0';
-                line.style.color = '#cbd5e1';
-                line.textContent = lineText;
-                container.appendChild(line);
-                container.scrollTop = container.scrollHeight;
-
-                // Keep only last 500 lines
-                while (container.children.length > 500) {{
-                    container.removeChild(container.firstChild);
-                }}
-            }};
-
-            logEventSource.addEventListener('ping', () => {{
-                // Keep-alive heartbeat
-            }});
-
-            logEventSource.onerror = () => {{
-                if (status) status.textContent = ' Reconnecting...';
-                setTimeout(setupLogStream, 5000);
-            }};
-
-            if (status) status.textContent = 'LIVE';
-        }}
-
-        async function loadInitialLogs() {{
-            try {{
-                const res = await fetch('/api/logs?count=100');
-                const data = await res.json();
-                const container = document.getElementById('log-container');
-                if (container) {{
-                    container.innerHTML = data.logs.map(log => 
-                        `<div style="padding:2px 0;color:#cbd5e1;">${{log}}</div>`
-                    ).join('');
-                    container.scrollTop = container.scrollHeight;
-                }}
-            }} catch (err) {{
-                console.error('Failed to load initial logs:', err);
+                btn.textContent = 'ðŸ—„ï¸ Run VACUUM Now';
             }}
         }}
 
@@ -2896,9 +2589,6 @@ async def admin_dashboard():
                 window.location.reload();
             }}, 30000);
         }}
-
-        // Initialize logs on page load
-        loadInitialLogs().then(() => setupLogStream());
     </script>
 </body>
 </html>
@@ -2925,82 +2615,6 @@ async def trigger_vacuum():
         "message": "VACUUM started in background. Check logs or refresh this page in a moment."
     }
 
-@app.get("/api/logs")
-async def api_logs(request: Request):
-    """Get recent logs"""
-    count = int(request.query_params.get("count", 100))
-    with log_lock:
-        logs = [l for (_, l) in list(log_buffer)[-count:]]
-    return JSONResponse({"logs": logs, "count": len(log_buffer)})
-
-
-@app.get("/api/logs/stream")
-async def api_logs_stream(request: Request):
-    """
-    Stream logs via Server-Sent Events (SSE).
-    
-    IMPORTANT: log_buffer is a fixed-size deque, so we track a monotonic seq per line.
-    The client stays connected and receives heartbeats even if no logs are produced.
-    """
-    async def generate():
-        # Optional query params:
-        #  - tail: send last N lines immediately on connect
-        #  - since: start streaming after a specific seq
-        tail = 0
-        since = 0
-        try:
-            tail = int(request.query_params.get("tail", "0") or "0")
-            since = int(request.query_params.get("since", "0") or "0")
-        except Exception:
-            tail = 0
-            since = 0
-
-        last_seq = since
-        heartbeat_ts = time.time()
-
-        # initial comment so proxies flush headers quickly
-        yield ": connected\n\n"
-
-        # Optional tail send
-        if tail and tail > 0:
-            with log_lock:
-                snapshot = list(log_buffer)[-tail:]
-            for seq, line in snapshot:
-                yield f"event: log\ndata: {line}\n\n"
-                last_seq = max(last_seq, seq)
-
-        while True:
-            # Check if client disconnected
-            if await request.is_disconnected():
-                break
-                
-            out = []
-            with log_lock:
-                snapshot = list(log_buffer)
-
-            for seq, line in snapshot:
-                if seq > last_seq:
-                    out.append((seq, line))
-                    last_seq = seq
-
-            if out:
-                for seq, line in out:
-                    yield f"event: log\ndata: {line}\n\n"
-
-            # Heartbeat to prevent idle timeouts
-            if (time.time() - heartbeat_ts) >= 15:
-                yield "event: ping\ndata: {}\n\n"
-                heartbeat_ts = time.time()
-
-            await asyncio.sleep(0.5)
-
-    return StreamingResponse(generate(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
-        "Connection": "keep-alive",
-    })
-
-
 @app.post("/admin/refresh/trigger")
 async def trigger_refresh():
     """Manually trigger a database refresh"""
@@ -3021,3 +2635,476 @@ async def trigger_refresh():
         "status": "success",
         "message": "Database refresh started in background. Check logs or refresh this page in a moment."
     }
+
+
+@app.get("/admin/logs")
+async def admin_logs():
+    """Live log viewer showing last 2500 lines with auto-refresh"""
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESPN4CC4C - Live Logs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .btn:hover {
+            background: #1976d2;
+        }
+        .btn.secondary {
+            background: #555;
+        }
+        .btn.secondary:hover {
+            background: #666;
+        }
+        .status {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+        }
+        .status.live {
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        .status.paused {
+            border-color: #ff9800;
+            color: #ff9800;
+        }
+        #logContainer {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            overflow-x: auto;
+            white-space: pre;
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+        .log-line {
+            margin-bottom: 2px;
+        }
+        .log-line.error {
+            color: #f44336;
+        }
+        .log-line.warning {
+            color: #ff9800;
+        }
+        .log-line.info {
+            color: #64b5f6;
+        }
+        .log-line.success {
+            color: #4caf50;
+        }
+        #lineCount {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        a.back-link {
+            color: #64b5f6;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        a.back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Live Logs</h1>
+        <div class="controls">
+            <button class="btn" id="pauseBtn" onclick="togglePause()">Pause</button>
+            <button class="btn secondary" onclick="clearLogs()">Clear Display</button>
+            <button class="btn secondary" onclick="scrollToBottom()">Scroll to Bottom</button>
+            <span class="status live" id="status">Live (refreshing every 5s)</span>
+            <span id="lineCount">Lines: 0</span>
+            <a href="/admin" class="back-link">← Back to Admin</a>
+        </div>
+        <div id="logContainer"></div>
+    </div>
+    
+    <script>
+        let isPaused = false;
+        let refreshInterval;
+        let lastContent = '';
+        
+        function classifyLine(line) {
+            const lower = line.toLowerCase();
+            if (lower.includes('error') || lower.includes('failed') || lower.includes('exception')) {
+                return 'error';
+            }
+            if (lower.includes('warning') || lower.includes('warn')) {
+                return 'warning';
+            }
+            if (lower.includes('success') || lower.includes('complete')) {
+                return 'success';
+            }
+            if (lower.includes('info') || lower.includes('starting')) {
+                return 'info';
+            }
+            return '';
+        }
+        
+        function updateLogs() {
+            if (isPaused) return;
+            
+            fetch('/admin/logs/data')
+                .then(r => r.text())
+                .then(data => {
+                    if (data !== lastContent) {
+                        lastContent = data;
+                        const container = document.getElementById('logContainer');
+                        const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+                        
+                        const lines = data.split('\\n');
+                        const html = lines
+                            .map(line => {
+                                if (!line.trim()) return '';
+                                const cls = classifyLine(line);
+                                return `<div class="log-line ${cls}">${escapeHtml(line)}</div>`;
+                            })
+                            .join('');
+                        
+                        container.innerHTML = html;
+                        document.getElementById('lineCount').textContent = 'Lines: ' + lines.filter(l => l.trim()).length;
+                        
+                        if (wasAtBottom) {
+                            scrollToBottom();
+                        }
+                    }
+                })
+                .catch(err => console.error('Failed to fetch logs:', err));
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pauseBtn');
+            const status = document.getElementById('status');
+            
+            if (isPaused) {
+                btn.textContent = 'Resume';
+                status.textContent = 'Paused';
+                status.className = 'status paused';
+            } else {
+                btn.textContent = 'Pause';
+                status.textContent = 'Live (refreshing every 5s)';
+                status.className = 'status live';
+                updateLogs();
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('lineCount').textContent = 'Lines: 0';
+        }
+        
+        function scrollToBottom() {
+            const container = document.getElementById('logContainer');
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // Initial load
+        updateLogs();
+        
+        // Auto-refresh every 5 seconds
+        refreshInterval = setInterval(updateLogs, 5000);
+    </script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
+
+
+@app.get("/admin/logs/data")
+async def admin_logs_data():
+    """Return last 2500 lines of logs as plain text"""
+    import subprocess
+    from pathlib import Path
+    
+    logs_content = []
+    
+    try:
+        # Method 1: Get logs from in-memory buffer (fastest and most reliable)
+        try:
+            memory_logs = log_buffer.get_all()
+            if memory_logs:
+                logs_content = [log + '\n' for log in memory_logs]
+        except Exception as e:
+            logger.error(f"Error reading from memory buffer: {e}")
+        
+        # Method 2: If memory buffer is empty, try reading from log files in /app/logs
+        if not logs_content:
+            log_dir = Path("/app/logs")
+            if log_dir.exists() and log_dir.is_dir():
+                log_files = sorted(
+                    log_dir.glob("*.log"),
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True
+                )
+                
+                if log_files:
+                    try:
+                        with open(log_files[0], 'r', encoding='utf-8', errors='replace') as f:
+                            all_lines = f.readlines()
+                            logs_content = all_lines[-2500:] if len(all_lines) > 2500 else all_lines
+                    except Exception as e:
+                        logger.error(f"Error reading log file {log_files[0]}: {e}")
+        
+        # Return the logs
+        if logs_content:
+            return PlainTextResponse(''.join(logs_content))
+        else:
+            log_dir = Path("/app/logs")
+            log_files_count = len(list(log_dir.glob('*.log'))) if log_dir.exists() else 0
+            
+            return PlainTextResponse(
+                "No logs available yet.\n\n"
+                "This can happen on first startup before logs are generated.\n"
+                "Logs should appear here shortly.\n\n"
+                "Diagnostic information:\n"
+                f"  - Memory buffer: {len(log_buffer.get_all())} lines\n"
+                f"  - Log directory (/app/logs) exists: {log_dir.exists()}\n"
+                f"  - Log files in directory: {log_files_count}\n\n"
+                "Try:\n"
+                "  1. Trigger a manual refresh from /admin/refresh\n"
+                "  2. Wait a few seconds and refresh this page\n"
+                "  3. Check 'docker logs espn4cc4c' from the host\n"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in admin_logs_data: {e}", exc_info=True)
+        return PlainTextResponse(f"Error fetching logs: {str(e)}")
+
+
+
+@app.get("/admin/env")
+async def admin_env():
+    """Display environment variables"""
+    import os
+    
+    # Get all environment variables
+    env_vars = dict(os.environ)
+    
+    # Sort by key
+    sorted_vars = sorted(env_vars.items())
+    
+    # Build HTML table
+    rows = []
+    for key, value in sorted_vars:
+        # Sanitize sensitive values
+        if any(sensitive in key.upper() for sensitive in ['PASSWORD', 'SECRET', 'TOKEN', 'KEY', 'API']):
+            if key.upper() == 'WATCH_API_KEY':
+                # Show WATCH_API_KEY since it's not really secret
+                display_value = value
+            else:
+                display_value = '***REDACTED***'
+        else:
+            display_value = value
+        
+        rows.append(f'<tr><td class="key">{key}</td><td class="value">{display_value}</td></tr>')
+    
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESPN4CC4C - Environment Variables</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }}
+        .subtitle {{
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }}
+        .controls {{
+            margin-bottom: 15px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }}
+        .search-box {{
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            width: 300px;
+        }}
+        .search-box:focus {{
+            outline: none;
+            border-color: #2196f3;
+        }}
+        table {{
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            border-collapse: collapse;
+            overflow: hidden;
+        }}
+        th {{
+            background: #252525;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 1px solid #333;
+            position: sticky;
+            top: 0;
+        }}
+        td {{
+            padding: 10px 12px;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 0.85rem;
+        }}
+        tr:last-child td {{
+            border-bottom: none;
+        }}
+        tr:hover {{
+            background: #222;
+        }}
+        .key {{
+            font-family: 'Courier New', monospace;
+            color: #64b5f6;
+            font-weight: 500;
+            width: 35%;
+        }}
+        .value {{
+            font-family: 'Courier New', monospace;
+            color: #a5d6a7;
+            word-break: break-all;
+        }}
+        .count {{
+            color: #888;
+            font-size: 0.85rem;
+        }}
+        a.back-link {{
+            color: #64b5f6;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }}
+        a.back-link:hover {{
+            text-decoration: underline;
+        }}
+        .table-container {{
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Environment Variables</h1>
+        <p class="subtitle">Current container environment configuration (sensitive values redacted)</p>
+        
+        <div class="controls">
+            <input type="text" class="search-box" id="searchBox" placeholder="Search variables..." onkeyup="filterTable()">
+            <span class="count" id="count">Showing {len(sorted_vars)} variables</span>
+            <a href="/admin" class="back-link">← Back to Admin</a>
+        </div>
+        
+        <div class="table-container">
+            <table id="envTable">
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(rows)}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        function filterTable() {{
+            const searchBox = document.getElementById('searchBox');
+            const filter = searchBox.value.toUpperCase();
+            const table = document.getElementById('envTable');
+            const rows = table.getElementsByTagName('tr');
+            let visibleCount = 0;
+            
+            for (let i = 1; i < rows.length; i++) {{
+                const keyCell = rows[i].getElementsByClassName('key')[0];
+                const valueCell = rows[i].getElementsByClassName('value')[0];
+                
+                if (keyCell && valueCell) {{
+                    const keyText = keyCell.textContent || keyCell.innerText;
+                    const valueText = valueCell.textContent || valueCell.innerText;
+                    
+                    if (keyText.toUpperCase().indexOf(filter) > -1 || 
+                        valueText.toUpperCase().indexOf(filter) > -1) {{
+                        rows[i].style.display = '';
+                        visibleCount++;
+                    }} else {{
+                        rows[i].style.display = 'none';
+                    }}
+                }}
+            }}
+            
+            document.getElementById('count').textContent = 'Showing ' + visibleCount + ' variables';
+        }}
+    </script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
