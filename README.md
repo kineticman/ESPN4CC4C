@@ -1,761 +1,292 @@
-# ESPN4CC4C — ESPN+ Virtual Channels for Channels DVR
+# ESPN4CC4C
 
-> ## ⚠️ This project is no longer actively maintained
-> ESPN4CC4C has not been updated in a long time and is dated. Please use **[FastChannels](https://github.com/kineticman/FastChannels)** instead — it is actively maintained, a self-hosted live-TV aggregator with M3U/XMLTV output and a web admin console. This repository is kept for reference only.
+ESPN+ virtual channels for [Channels DVR](https://getchannels.com/).
 
-Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all in one Docker service.
+ESPN4CC4C turns the ESPN+ event schedule into 40 stable virtual channels (`eplus1`–`eplus40`) and serves them to Channels DVR as an XMLTV guide plus an M3U playlist, all from a single Docker container.
 
-> **Current Version:** v5.2.x (2025-02-14+) — PrismCast support, improved admin interface, in-process scheduler (APScheduler), and comprehensive event filtering.
+> **Project status: no longer maintained.**
+> This project has not been updated in a long time and is dated. Please use **[FastChannels](https://github.com/kineticman/FastChannels)** instead. It is actively maintained and provides M3U/XMLTV output with a web admin console. This repository is kept for reference only.
 
----
+## Contents
 
-## 🆕 What's New
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Adding to Channels DVR](#adding-to-channels-dvr)
+- [Configuration](#configuration)
+- [Event filtering](#event-filtering)
+- [Event padding](#event-padding)
+- [HTTP endpoints](#http-endpoints)
+- [Operations](#operations)
+- [Troubleshooting](#troubleshooting)
+- [Security](#security)
+- [Documentation](#documentation)
+- [License and credits](#license-and-credits)
 
-### v5.2.x — PrismCast & Polish
-- **PrismCast M3U output** ⭐ **NEW**: Third M3U export format enabling native app launching for ESPN content
-  - `playlist.prismcast.m3u` - Launch ESPN/WatchESPN apps directly instead of browser-only
-  - Readable URLs (no URL encoding) for easier debugging
-  - Uses `/play` endpoint with raw URL parameters
-  - Configured via `PCAST_SERVER` and `PCAST_PORT` environment variables
-  - All three M3U formats (CC, CH4C, PrismCast) generated simultaneously
-- **Polished admin interface**: Improved layout and organization of admin pages
-- **Enhanced documentation**: Comprehensive guides for all M3U formats
+## Features
 
-### v5.1.x — Event Padding & Advanced Filtering
-- **Admin pages**: `/admin` hub linking to all useful endpoints; `/admin/refresh` shows scheduler status with manual trigger buttons
-- **Event Padding**: Configurable pre/post padding for live sports to handle overtime and early starts
-  - `PADDING_START_MINS` - Minutes before event (catch pre-game/early starts)
-  - `PADDING_END_MINS` - Minutes after event (catch overtime/extra innings)
-  - `PADDING_LIVE_ONLY` - Smart detection: only pad live sports, skip studio shows (default: true)
-- **Environment variable filtering**: Configure all filters via env vars (no INI file required!)
-  - 16 filter variables: networks, sports, leagues, languages, ESPN+, PPV, replays, and more
-  - Priority: **Env Vars > filters.ini > Defaults**
-  - `/setupfilters` helper UI to explore available values
-- **Built-in scheduler (APScheduler)**: Runs inside FastAPI (no system cron needed)
-  - Daily refresh at **03:00**
-  - Weekly SQLite VACUUM on Sundays at **03:10**
-  - Weekly log cleanup on Sundays at **03:30**
-- **Improved XMLTV**: Content classification, richer categories, multi-feed game labels (NHL/NBA home & away broadcasts)
-- **Channels-4-Chrome M3U**: Optional `playlist.ch4c.m3u` for HTTP-only launchers
+- 40 virtual channels with a rolling XMLTV guide (default 72 hours)
+- Three M3U formats generated together: Chrome Capture, Channels4Chrome and PrismCast
+- Event filtering by network, sport, league, language and content type, configurable through environment variables or `filters.ini`
+- Configurable pre/post event padding so recordings of live sports are not cut off by overtime
+- Labels for multi-feed games (for example home and away broadcasts for NHL and NBA)
+- Built-in scheduler (APScheduler) with a daily refresh, weekly SQLite `VACUUM` and weekly log cleanup, so no system cron is needed
+- Admin dashboard with manual refresh and `VACUUM` triggers
 
----
+## Quick start
 
-## 🚀 Quick Start (Portainer — Recommended)
-
-This is the easiest flow for Channels DVR users.
-
-### 1. Open Portainer → Stacks → Add Stack
-
-**Name:** `espn4cc4c`
-
-### 2. Paste this compose YAML:
-
-```yaml
-services:
-  espn4cc4c:
-    image: ghcr.io/kineticman/espn4cc4c:${TAG:-latest}
-    container_name: espn4cc4c
-    init: true
-    stop_grace_period: 20s
-
-    ports:
-      - ${PORT:-8094}:${PORT:-8094}
-
-    environment:
-      # Core settings
-      - TZ=${TZ:-America/New_York}
-      - VC_RESOLVER_BASE_URL=${VC_RESOLVER_BASE_URL:-http://192.0.2.10:8094}
-      - PORT=${PORT:-8094}
-      - APP_MODULE=${APP_MODULE:-bin.vc_resolver:app}
-      
-      # Channel configuration
-      - LANES=${LANES:-40}
-      - VALID_HOURS=${VALID_HOURS:-72}
-      - ALIGN=${ALIGN:-30}
-      - MIN_GAP_MINS=${MIN_GAP_MINS:-30}
-      - M3U_GROUP_TITLE=${M3U_GROUP_TITLE:-ESPN+ VC}
-      
-      # Chrome Capture (standard)
-      - CC_HOST=${CC_HOST:-192.0.2.10}
-      - CC_PORT=${CC_PORT:-5589}
-      
-      # Channels-4-Chrome (optional)
-      - CH4C_HOST=${CH4C_HOST:-127.0.0.1}
-      - CH4C_PORT=${CH4C_PORT:-2442}
-      
-      # PrismCast (optional, for native app launching)
-      - PCAST_SERVER=${PCAST_SERVER:-127.0.0.1}
-      - PCAST_PORT=${PCAST_PORT:-5589}
-      
-      # ESPN Watch API
-      - WATCH_API_KEY=${WATCH_API_KEY:-0dbf88e8-cc6d-41da-aa83-18b5c630bc5c}
-      
-      # Optional: Event padding (handle games that run long)
-      # - PADDING_START_MINS=${PADDING_START_MINS:-0}
-      # - PADDING_END_MINS=${PADDING_END_MINS:-30}
-      # - PADDING_LIVE_ONLY=${PADDING_LIVE_ONLY:-true}
-      
-      # Optional: Event filtering examples (see Filtering section)
-      # - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNDeportes,ESPNEWS
-      # - FILTER_REQUIRE_ESPN_PLUS=true
-      # - FILTER_EXCLUDE_PPV=true
-      # - FILTER_EXCLUDE_REAIR=true
-
-    volumes:
-      - ${HOST_DIR:-.}/data:/app/data
-      - ${HOST_DIR:-.}/out:/app/out
-      - ${HOST_DIR:-.}/logs:/app/logs
-
-    # Optional DNS search (suffix matching, not resolution)
-    dns_search:
-      - ${DOMAIN:-localdomain}
-      - ${TAILNET:-tailxxxxx.ts.net}
-
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:${PORT:-8094}/health >/dev/null"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-    restart: unless-stopped
-```
-
-### 3. Configure Environment Variables
-
-In Portainer's "Environment variables" panel, set:
-
-**Required:**
-- `TZ=America/New_York` (your timezone)
-- `VC_RESOLVER_BASE_URL=http://<YOUR-IP>:8094`
-- `CC_HOST=<YOUR-IP>` (your server's IP or hostname)
-
-**Optional:**
-- `HOST_DIR=/data/espn4cc4c` (custom host path for data/out/logs)
-- `CH4C_HOST` / `CH4C_PORT` (if using Channels-4-Chrome)
-- `PCAST_SERVER` / `PCAST_PORT` (if using PrismCast for native apps)
-- `PADDING_START_MINS=0` / `PADDING_END_MINS=30` (event padding)
-
-### 4. Deploy the Stack
-
-### 5. Verify Installation
-
-Open in browser or use curl:
+### Docker Compose
 
 ```bash
-http://<YOUR-IP>:8094/health              # Health check
-http://<YOUR-IP>:8094/admin               # Admin dashboard
-http://<YOUR-IP>:8094/epg.xml             # XMLTV guide
-http://<YOUR-IP>:8094/playlist.m3u        # Chrome Capture M3U
-http://<YOUR-IP>:8094/playlist.ch4c.m3u   # Channels4Chrome M3U
-http://<YOUR-IP>:8094/playlist.prismcast.m3u  # PrismCast M3U (NEW!)
-http://<YOUR-IP>:8094/whatson_all         # Quick lane preview
-```
-
----
-
-## 🚀 Quick Start (Git + Compose)
-
-For users who prefer git clone and docker compose:
-
-```bash
-# 1. Clone repository
 git clone https://github.com/kineticman/ESPN4CC4C.git
 cd ESPN4CC4C
 
-# 2. (Optional) Edit docker-compose.yml
-#    - Set VC_RESOLVER_BASE_URL and CC_HOST to your server IP
-#    - Adjust PORT, PCAST_SERVER, or other settings as needed
+# Edit docker-compose.yml (or create a .env file) and set at least:
+#   VC_RESOLVER_BASE_URL=http://<YOUR-IP>:8094
+#   CC_HOST=<YOUR-IP>
 
-# 3. Create directories and start container
 mkdir -p data out logs
 docker compose up -d
 
-# 4. Verify installation
-curl -fsS "http://<YOUR-IP>:8094/health" && echo "✓ Service is healthy"
-curl -fsS "http://<YOUR-IP>:8094/playlist.m3u" | head -n 20
+curl -fsS http://<YOUR-IP>:8094/health
 ```
 
----
+The published image is `ghcr.io/kineticman/espn4cc4c`. Pin a specific tag rather than `latest` for anything long-lived.
 
-## ➕ Add to Channels DVR
+### Portainer
 
-### Choose Your M3U Format
+1. Go to **Stacks → Add stack** and name it `espn4cc4c`.
+2. Paste the contents of [`docker-compose.yml`](docker-compose.yml).
+3. Set the required environment variables (below) and deploy.
 
-ESPN4CC4C generates **three M3U formats** simultaneously:
+Windows and Linux helper scripts (`setup-windows.ps1`, `setup-linux.sh`) are described in [DOCKER.md](DOCKER.md).
 
-| Format | File | URL | Best For |
-|--------|------|-----|----------|
-| **Chrome Capture** | `playlist.m3u` | `/playlist.m3u` | Standard browser-based playback (recommended for most users) |
-| **Channels4Chrome** | `playlist.ch4c.m3u` | `/playlist.ch4c.m3u` | HTTP-only launchers, CH4C bridge |
-| **PrismCast** ⭐ **NEW** | `playlist.prismcast.m3u` | `/playlist.prismcast.m3u` | **Native app launching** (ESPN/WatchESPN apps) |
+### Verify
 
-### Configure in Channels DVR
+| URL | Purpose |
+|-----|---------|
+| `/health` | Health check |
+| `/admin` | Admin dashboard |
+| `/epg.xml` | XMLTV guide |
+| `/playlist.m3u` | Chrome Capture M3U |
+| `/playlist.ch4c.m3u` | Channels4Chrome M3U |
+| `/playlist.prismcast.m3u` | PrismCast M3U |
+| `/whatson_all` | What is on every lane right now |
 
-1. **Open Channels DVR Settings → Custom Channels**
-2. **Add Source**
-3. **Configure URLs:**
-   - **XMLTV Guide:** `http://<YOUR-IP>:8094/epg.xml`
-   - **M3U Playlist:** Choose one:
-     - Chrome Capture: `http://<YOUR-IP>:8094/playlist.m3u`
-     - Channels4Chrome: `http://<YOUR-IP>:8094/playlist.ch4c.m3u`
-     - PrismCast: `http://<YOUR-IP>:8094/playlist.prismcast.m3u`
+On a new install, trigger a manual refresh from `/admin/refresh` so the database is populated before the first scheduled run (03:00 daily).
 
-You'll see **ESPN+ EPlus 1–40** channels with full guide data.
+## Adding to Channels DVR
 
-### M3U Format Details
+1. In Channels DVR, open **Settings → Sources → Custom Channels** and add a source.
+2. Set the **XMLTV guide** to `http://<YOUR-IP>:8094/epg.xml`.
+3. Set the **M3U playlist** to one of the formats below.
 
-**Chrome Capture (Standard)**
-```
+The channels appear as **ESPN+ EPlus 1–40** with guide data.
+
+| Format | Playlist | Use when |
+|--------|----------|----------|
+| Chrome Capture | `/playlist.m3u` | Standard browser-based playback (most users) |
+| Channels4Chrome | `/playlist.ch4c.m3u` | You use the Channels4Chrome HTTP bridge |
+| PrismCast | `/playlist.prismcast.m3u` | You run a PrismCast server that launches native ESPN apps |
+
+Example entries for `eplus1`:
+
+```text
+# Chrome Capture
 chrome://192.0.2.10:5589/stream?url=http%3A%2F%2F192.0.2.10%3A8094%2Fvc%2Feplus1
-```
-- Uses `chrome://` protocol
-- URL-encoded parameters
-- Browser-based playback via Chrome Capture proxy
 
-**Channels4Chrome**
-```
+# Channels4Chrome
 http://127.0.0.1:2442/stream?url=http%3A%2F%2F192.0.2.10%3A8094%2Fvc%2Feplus1
-```
-- Uses `http://` protocol
-- URL-encoded parameters
-- HTTP-only bridge for systems that don't support `chrome://`
 
-**PrismCast (Native Apps)** ⭐ **NEW**
-```
+# PrismCast
 http://127.0.0.1:5589/play?url=http://192.0.2.10:8094/vc/eplus1
 ```
-- Uses `http://` protocol with `/play` endpoint
-- Raw URL parameters (not encoded)
-- **Launches native ESPN/WatchESPN apps** instead of browser
-- More readable URLs for debugging
-- Requires separate PrismCast server (configured to recognize ESPN domains)
 
-**PrismCast Configuration:**
-- Set `PCAST_SERVER` to your PrismCast host/IP
-- Set `PCAST_PORT` to your PrismCast port (typically 5589)
-- Configure PrismCast profiles to recognize ESPN domains and launch appropriate apps
-- See PrismCast documentation for profile configuration details
+For PrismCast, set `PCAST_SERVER` and `PCAST_PORT` to your PrismCast host, and configure PrismCast to recognize ESPN domains. See the PrismCast documentation for profile setup.
 
----
+## Configuration
 
-## 🏒 Multi-Feed Games (NHL / NBA Home & Away Broadcasts)
+Settings are environment variables. [`.env.example`](.env.example) lists all of them.
 
-Some ESPN+ games—especially **NHL** and **NBA**—include multiple feeds (home broadcast, away broadcast, national feed). ESPN4CC4C keeps all available feeds and labels them clearly:
+**Required**
 
-- Each feed becomes a separate `<programme>` entry in `epg.xml`
-- When ESPN provides feed metadata, descriptions are annotated:
-  - `Bruins vs Ducks • Bruins broadcast`
-  - `Bruins vs Ducks • Ducks broadcast`
-- In Channels DVR, you'll see multiple entries with the same title/time but different descriptions
-- Choose the feed you want without trial-and-error
+| Variable | Description |
+|----------|-------------|
+| `TZ` | Your timezone, for example `America/New_York` |
+| `VC_RESOLVER_BASE_URL` | Base URL clients use to reach this service, for example `http://<YOUR-IP>:8094` |
+| `CC_HOST` | Host or IP of your Chrome Capture server |
 
----
-
-## ⏱️ Event Padding (Handle Games That Run Long)
-
-Live sports often exceed their scheduled duration. Event padding extends start/end times in your EPG to ensure recordings capture the entire event.
-
-### Why Padding?
-
-- **Football games** can run 3.5+ hours with overtime (scheduled for 3 hours)
-- **Baseball games** can go 12+ innings
-- **Basketball games** can have multiple overtimes
-- **Pre-game shows** sometimes start earlier than scheduled
-
-### Configuration
-
-```yaml
-environment:
-  - PADDING_START_MINS=5    # Start recording 5 minutes early
-  - PADDING_END_MINS=30     # Keep recording 30 minutes past scheduled end
-  - PADDING_LIVE_ONLY=true  # Only pad live sports (skip studio shows)
-```
-
-### How It Works
-
-1. **Smart Detection**: Automatically identifies live sports events vs studio shows/replays
-2. **Selective Padding**: Only pads events marked as live (unless `PADDING_LIVE_ONLY=false`)
-3. **EPG Integration**: Modified times appear in XMLTV guide automatically
-4. **Comprehensive Logging**: Every padded event logged for audit trail
-
-### Configuration Options
+**Common options**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PADDING_START_MINS` | `0` | Minutes to add before event start |
-| `PADDING_END_MINS` | `0` | Minutes to add after event end |
-| `PADDING_LIVE_ONLY` | `true` | Only pad live events (skip studio shows/replays) |
+| `PORT` | `8094` | HTTP port |
+| `LANES` | `40` | Number of virtual channels |
+| `VALID_HOURS` | `72` | Length of the guide window |
+| `ALIGN` | `30` | Slot alignment in minutes |
+| `MIN_GAP_MINS` | `30` | Minimum gap between events on a lane |
+| `M3U_GROUP_TITLE` | `ESPN+ VC` | Group title used in the playlists |
+| `CC_PORT` | `5589` | Chrome Capture port |
+| `CH4C_HOST` / `CH4C_PORT` | `127.0.0.1` / `2442` | Channels4Chrome bridge |
+| `PCAST_SERVER` / `PCAST_PORT` | `127.0.0.1` / `5589` | PrismCast server |
+| `HOST_DIR` | `.` | Host directory holding `data/`, `out/` and `logs/` |
 
-### Example Scenarios
+## Event filtering
 
-**Conservative (catch overtime only):**
+Filters are applied when the schedule is refreshed. Precedence is **environment variables > `filters.ini` > defaults**.
+
+Examples:
+
 ```yaml
+environment:
+  # ESPN+ content only (drop linear networks)
+  - FILTER_REQUIRE_ESPN_PLUS=true
+  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNDeportes,ESPNEWS
+
+  # No pay-per-view or replays
+  - FILTER_EXCLUDE_PPV=true
+  - FILTER_EXCLUDE_REAIR=true
+
+  # Specific sports or leagues
+  - FILTER_ENABLED_SPORTS=Football,Basketball,Baseball,Hockey
+  - FILTER_ENABLED_LEAGUES=NFL,NBA,MLB,NHL
+
+  # No Spanish-language events
+  - FILTER_EXCLUDE_LANGUAGES=es,spa,spanish
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FILTER_ENABLED_NETWORKS` / `FILTER_EXCLUDE_NETWORKS` | `*` / empty | Networks to include / exclude (comma-separated) |
+| `FILTER_ENABLED_SPORTS` / `FILTER_EXCLUDE_SPORTS` | `*` / empty | Sports to include / exclude |
+| `FILTER_ENABLED_LEAGUES` / `FILTER_EXCLUDE_LEAGUES` | `*` / empty | Leagues to include / exclude |
+| `FILTER_ENABLED_EVENT_TYPES` / `FILTER_EXCLUDE_EVENT_TYPES` | `*` / empty | Event types (for example `LIVE`, `REPLAY`) |
+| `FILTER_ENABLED_LANGUAGES` / `FILTER_EXCLUDE_LANGUAGES` | `*` / empty | Languages (`en`, `es`, ...) |
+| `FILTER_REQUIRE_ESPN_PLUS` | unset | `true` = ESPN+ only, `false` = exclude ESPN+ |
+| `FILTER_EXCLUDE_PPV` | `false` | Exclude pay-per-view events |
+| `FILTER_EXCLUDE_REAIR` | `false` | Exclude replays and re-airs |
+| `FILTER_EXCLUDE_NO_SPORT` | `false` | Exclude studio shows with no sport |
+| `FILTER_CASE_INSENSITIVE` | `true` | Case-insensitive matching |
+| `FILTER_PARTIAL_LEAGUE_MATCH` | `true` | Allow partial league-name matches |
+
+**Finding valid values.** Open `/setupfilters` to list the networks, sports, leagues and packages currently in your database, with copy-ready snippets. The same data is at `/filters/json`.
+
+**Using `filters.ini` instead.** Generate a starter file, mount it at `/app/filters.ini`, then trigger a refresh:
+
+```bash
+docker compose exec espn4cc4c python3 /app/bin/generate_filter_options.py \
+  /app/data/eplus_vc.sqlite3 --generate-config > filters.ini
+```
+
+After changing filters, check `/whatson_all?format=txt` to see the result. More detail is in [docs/FILTERING_FAQ.md](docs/FILTERING_FAQ.md) and [docs/FILTER_ENV_VARS.md](docs/FILTER_ENV_VARS.md).
+
+## Event padding
+
+Live sports often run past their scheduled slot. Padding widens an event's start and end times in the guide so recordings capture the whole game.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PADDING_START_MINS` | `0` | Minutes added before the event start |
+| `PADDING_END_MINS` | `0` | Minutes added after the event end |
+| `PADDING_LIVE_ONLY` | `true` | Pad only live sports; skip studio shows, replays and events with no sport |
+
+Suggested starting points:
+
+```yaml
+# Catch overtime only
 - PADDING_START_MINS=0
 - PADDING_END_MINS=30
-- PADDING_LIVE_ONLY=true
-```
 
-**Aggressive (catch everything):**
-```yaml
+# More generous
 - PADDING_START_MINS=10
 - PADDING_END_MINS=60
-- PADDING_LIVE_ONLY=true
 ```
 
-**Pad everything including studio shows:**
-```yaml
-- PADDING_START_MINS=5
-- PADDING_END_MINS=30
-- PADDING_LIVE_ONLY=false
-```
+Padded events are logged. To confirm padding is applied:
 
-### What Gets Padded?
-
-✅ **Padded:**
-- Live sports events (NFL, NBA, MLB, NHL, etc.)
-- Events marked as "LIVE" in ESPN data
-
-❌ **Not Padded (when PADDING_LIVE_ONLY=true):**
-- Studio shows (SportsCenter, Get Up, etc.)
-- Replays/re-airs
-- Upcoming events (not yet started)
-- Shows without sport classification
-
-### Verification
-
-Check padded events in logs:
 ```bash
 docker compose logs | grep "Padding applied"
 ```
 
-Or review the EPG to see modified times:
-```bash
-curl http://<YOUR-IP>:8094/epg.xml | grep -A 5 "padding"
-```
-
----
-
-## 🔧 Event Filtering
-
-Filter events by network, sport, league, language, or content type using environment variables.
-
-### Quick Examples
-
-**ESPN+ content only (exclude linear networks):**
-```yaml
-environment:
-  - FILTER_REQUIRE_ESPN_PLUS=true
-  - FILTER_EXCLUDE_NETWORKS=ESPN,ESPN2,ESPNU,ESPNDeportes,ESPNEWS
-```
-
-**No Pay-Per-View or replays:**
-```yaml
-environment:
-  - FILTER_EXCLUDE_PPV=true
-  - FILTER_EXCLUDE_REAIR=true
-```
-
-**Specific sports only:**
-```yaml
-environment:
-  - FILTER_ENABLED_SPORTS=Football,Basketball,Baseball,Hockey
-```
-
-**Pro leagues only:**
-```yaml
-environment:
-  - FILTER_ENABLED_LEAGUES=NFL,NBA,MLB,NHL
-```
-
-**College sports only:**
-```yaml
-environment:
-  - FILTER_ENABLED_LEAGUES=NCAA
-  - FILTER_PARTIAL_LEAGUE_MATCH=true
-```
-
-**No Spanish content:**
-```yaml
-environment:
-  - FILTER_EXCLUDE_LANGUAGES=es,spa,spanish
-```
-
-### All Filter Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FILTER_ENABLED_NETWORKS` | `*` | Networks to include (comma-separated) |
-| `FILTER_EXCLUDE_NETWORKS` | `` | Networks to exclude |
-| `FILTER_ENABLED_SPORTS` | `*` | Sports to include |
-| `FILTER_EXCLUDE_SPORTS` | `` | Sports to exclude |
-| `FILTER_ENABLED_LEAGUES` | `*` | Leagues to include |
-| `FILTER_EXCLUDE_LEAGUES` | `` | Leagues to exclude |
-| `FILTER_ENABLED_EVENT_TYPES` | `*` | Event types (LIVE, REPLAY, etc.) |
-| `FILTER_EXCLUDE_EVENT_TYPES` | `` | Event types to exclude |
-| `FILTER_ENABLED_LANGUAGES` | `*` | Languages (`en`, `es`, etc.) |
-| `FILTER_EXCLUDE_LANGUAGES` | `` | Languages to exclude |
-| `FILTER_REQUIRE_ESPN_PLUS` | `` | `true`=ESPN+ only, `false`=exclude ESPN+ |
-| `FILTER_EXCLUDE_PPV` | `false` | Exclude Pay-Per-View events |
-| `FILTER_EXCLUDE_REAIR` | `false` | Exclude replays/re-airs |
-| `FILTER_EXCLUDE_NO_SPORT` | `false` | Exclude studio shows |
-| `FILTER_CASE_INSENSITIVE` | `true` | Case-insensitive matching |
-| `FILTER_PARTIAL_LEAGUE_MATCH` | `true` | Allow partial league name matching |
-
-**Priority:** Environment Variables > `filters.ini` > Defaults
-
-### Filter Helper UI
-
-Don't know what to filter? The built-in helper shows what's available:
-
-```
-http://<YOUR-IP>:8094/setupfilters
-```
-
-This page:
-- Scans your current database
-- Shows all distinct networks, sports, leagues, and packages
-- Generates ready-to-copy filter snippets
-- Available as JSON: `http://<YOUR-IP>:8094/filters/json`
-
-### Using filters.ini (Legacy Alternative)
-
-If you prefer INI files over environment variables:
-
-```bash
-# Generate starter config
-docker compose exec espn4cc4c python3 /app/bin/generate_filter_options.py \
-  /app/data/eplus_vc.sqlite3 --generate-config > filters.ini
-
-# Edit filters.ini as needed
-# Mount it: - ./filters.ini:/app/filters.ini
-
-# Trigger refresh
-docker compose exec espn4cc4c bash -lc "python3 /app/bin/refresh_in_container.py"
-```
-
-**Note:** Environment variables override `filters.ini` settings.
-
-### Verify Results
-
-After changing filters, check what's scheduled:
-
-```
-http://<YOUR-IP>:8094/whatson_all?format=txt
-```
-
-Shows a snapshot of all 40 lanes reflecting your active filters.
-
----
-
-## 🔎 API Reference
-
-### Core Endpoints
+## HTTP endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /health` | Health check (returns `{"ok": true}`) |
-| `GET /admin` | Admin dashboard hub (links to all tools) |
-| `GET /admin/refresh` | Refresh/VACUUM dashboard with manual triggers |
-
-### Content Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /epg.xml` | XMLTV guide data |
+| `GET /health` | Health check |
+| `GET /admin` | Admin dashboard hub |
+| `GET /admin/refresh` | Scheduler status and manual triggers |
+| `POST /admin/refresh/trigger` | Run a refresh now |
+| `POST /admin/vacuum/trigger` | Run a SQLite `VACUUM` now |
+| `GET /epg.xml` | XMLTV guide |
 | `GET /playlist.m3u` | Chrome Capture M3U |
 | `GET /playlist.ch4c.m3u` | Channels4Chrome M3U |
-| `GET /playlist.prismcast.m3u` | PrismCast M3U (native apps) |
-
-### Debug & Inspection
-
-| Endpoint | Description |
-|----------|-------------|
+| `GET /playlist.prismcast.m3u` | PrismCast M3U |
 | `GET /whatson_all?format=json\|txt` | All lanes at a glance |
-| `GET /whatson/{lane}?format=json\|txt` | Single lane details |
-| `GET /deeplink/{lane}` | ESPN deeplink URL for lane |
-| `GET /setupfilters` | Interactive filter helper UI |
-| `GET /filters/json` | Available filter values (JSON) |
+| `GET /whatson/{lane}?format=json\|txt` | One lane in detail |
+| `GET /deeplink/{lane}` | ESPN deeplink for a lane |
+| `GET /setupfilters` | Filter helper UI |
+| `GET /filters/json` | Available filter values |
 
-### Admin Actions
+Full reference: [docs/api/API_DOCUMENTATION.md](docs/api/API_DOCUMENTATION.md).
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/admin/refresh/trigger` | POST | Trigger database refresh now |
-| `/admin/vacuum/trigger` | POST | Trigger SQLite VACUUM now |
+## Operations
 
----
+**Schedule (container timezone).** Refresh runs daily at 03:00. `VACUUM` runs Sundays at 03:10 and log cleanup at 03:30. A refresh typically takes 2–5 minutes. Expect roughly 200–300 MB of RAM, and under 500 MB of disk including logs.
 
-## 🧰 Operations
+**Common commands**
 
-### Admin Dashboard (Recommended)
-
-**Main Hub:**
-```
-http://<YOUR-IP>:8094/admin
-```
-
-Links to:
-- Health checks
-- EPG/M3U outputs (all three formats)
-- Filter helpers
-- Lane debugging tools
-- Refresh/VACUUM dashboard
-
-**Refresh Dashboard:**
-```
-http://<YOUR-IP>:8094/admin/refresh
-```
-
-Shows:
-- Last refresh time and duration
-- Last VACUUM time and duration
-- Scheduler status
-- Manual trigger buttons
-
-### Manual Operations (Web)
-
-**Trigger Refresh:**
-1. Navigate to `http://<YOUR-IP>:8094/admin/refresh`
-2. Click **"🔄 Trigger Refresh Now"**
-3. Page shows status and progress
-
-**Trigger VACUUM:**
-1. Same page: `http://<YOUR-IP>:8094/admin/refresh`
-2. Click **"🗄️ Run VACUUM Now"**
-3. Compacts SQLite database
-
-### Manual Operations (CLI)
-
-**Refresh via CLI:**
 ```bash
-docker compose exec espn4cc4c bash -lc "python3 /app/bin/refresh_in_container.py"
+docker compose logs -f --tail=200                       # follow logs
+docker compose exec espn4cc4c python3 /app/bin/refresh_in_container.py   # manual refresh
+docker compose exec espn4cc4c sqlite3 /app/data/eplus_vc.sqlite3 'VACUUM;'
 ```
 
-**View Logs:**
+**Update**
+
 ```bash
-docker compose logs -f --tail=200
+docker compose pull && docker compose up -d
 ```
 
-**Check Container Status:**
-```bash
-docker compose ps
-docker compose exec espn4cc4c curl http://localhost:8094/health
-```
+In Portainer, use **Stacks → espn4cc4c → Pull and redeploy**.
 
-### First-Run Note
+**Back up the database**
 
-On new installations, scheduler timestamps won't show until:
-- First scheduled run occurs (3:00 AM for refresh, Sunday 3:10 AM for VACUUM)
-- You manually trigger via `/admin/refresh`
-
-Recommendation: Trigger a manual refresh after first deployment to seed the database.
-
----
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**Health check fails:**
-- Ensure Docker is running
-- Check that configured `PORT` (default 8094) is free
-- Verify firewall allows connections on `PORT`
-
-**No channels in M3U/EPG:**
-- Check `/whatson_all` to see what's scheduled
-- Review active filters (might be too restrictive)
-- Trigger manual refresh via `/admin/refresh`
-- Check container logs: `docker compose logs`
-
-**Filters not working:**
-- Verify environment variables are set correctly in `docker-compose.yml`
-- Check container environment: `docker compose exec espn4cc4c env | grep FILTER`
-- Look for "Active Filters" summary in refresh logs
-- Remember: Environment variables override `filters.ini`
-
-**PrismCast M3U not generating:**
-- Verify `PCAST_SERVER` and `PCAST_PORT` are set
-- Check that file exists: `docker compose exec espn4cc4c ls -la /app/out/playlist.prismcast.m3u`
-- All three M3U files are always generated together
-
-**Hostname doesn't resolve:**
-- Use IP addresses instead of hostnames
-- Ensure DNS can resolve your hostnames (LAN/Tailscale DNS)
-- Note: `dns_search` only adds suffixes, doesn't create DNS entries
-
-**Large Docker logs:**
-- Log rotation is enabled (10MB × 5 files max)
-- Adjust in `docker-compose.yml` under `logging.options`
-
-**Events missing overtime/running long:**
-- Configure event padding (see Event Padding section)
-- Set `PADDING_END_MINS=30` or higher
-- Check logs to confirm padding is applied: `grep "Padding applied"`
-
-### Getting Help
-
-**Check logs first:**
-```bash
-docker compose logs --tail=500 > espn4cc4c.log
-```
-
-**Verify configuration:**
-```bash
-docker compose config
-docker compose exec espn4cc4c env | sort
-```
-
-**Test individual components:**
-```bash
-# Health
-curl http://<YOUR-IP>:8094/health
-
-# EPG
-curl -I http://<YOUR-IP>:8094/epg.xml
-
-# M3U
-curl -I http://<YOUR-IP>:8094/playlist.m3u
-curl -I http://<YOUR-IP>:8094/playlist.prismcast.m3u
-
-# Lanes
-curl http://<YOUR-IP>:8094/whatson_all?format=txt
-```
-
----
-
-## 📊 Performance & Resource Usage
-
-### Typical Resource Usage
-- **CPU:** Minimal during normal operation; brief spikes during refresh
-- **RAM:** ~200-300MB typical, ~500MB during refresh
-- **Disk:** 
-  - Database: 50-150MB (depends on filtering)
-  - Logs: 50MB max (with rotation)
-  - Total: <500MB
-
-### Refresh Timing
-- **Daily refresh:** ~2-5 minutes (depends on network speed)
-- **Weekly VACUUM:** ~30-60 seconds
-- **Scheduled times:** 
-  - Refresh: 3:00 AM daily
-  - VACUUM: 3:10 AM Sundays
-  - Log cleanup: 3:30 AM Sundays
-
-### Optimization Tips
-- Use event filtering to reduce database size
-- Run VACUUM periodically (automated weekly)
-- Enable log rotation (already configured)
-- Consider `VALID_HOURS=48` instead of `72` to reduce EPG size
-
----
-
-## 🔐 Security & Best Practices
-
-### Security Guidelines
-- **Do NOT expose publicly** — designed for trusted LAN use only
-- Use within your local network or VPN (Tailscale, etc.)
-- No authentication built-in (rely on network security)
-- ESPN account credentials handled by ESPN's servers (OAuth flow)
-
-### Best Practices
-- Keep container image updated
-- Use specific version tags instead of `:latest` in production
-- Monitor logs for unusual activity
-- Back up database periodically: `data/eplus_vc.sqlite3`
-- Review filters regularly to match your viewing preferences
-
----
-
-## 🔄 Updates & Maintenance
-
-### Updating the Container
-
-**Using Portainer:**
-1. Navigate to Stacks → espn4cc4c
-2. Click "Pull and redeploy"
-
-**Using Docker Compose:**
-```bash
-docker compose pull
-docker compose up -d
-```
-
-### Database Maintenance
-
-**Automatic:**
-- Weekly VACUUM (Sundays 3:10 AM)
-- Automatic index optimization
-- Log rotation (10MB × 5 files)
-
-**Manual:**
-- Trigger VACUUM via `/admin/refresh` dashboard
-- CLI: `docker compose exec espn4cc4c sqlite3 /app/data/eplus_vc.sqlite3 'VACUUM;'`
-
-### Backup
-
-**Database backup:**
 ```bash
 docker compose exec espn4cc4c sqlite3 /app/data/eplus_vc.sqlite3 '.backup /app/data/backup.db'
 docker compose cp espn4cc4c:/app/data/backup.db ./backup-$(date +%Y%m%d).db
 ```
 
----
+Docker logs are rotated (10 MB x 5 files). See [docs/LOG_ROTATION.md](docs/LOG_ROTATION.md).
 
-## 📚 Additional Resources
+## Troubleshooting
 
-### Documentation Files
-- `ESPN4CC4C_PRISMCAST_INTEGRATION.md` - Technical details on PrismCast implementation
-- `PRISMCAST_QUICKSTART.md` - User guide for PrismCast M3U format
-- `.env.example` - Complete environment variable reference
+| Symptom | What to check |
+|---------|---------------|
+| Health check fails | Docker is running, `PORT` is free, firewall allows the port |
+| No channels or empty guide | `/whatson_all` for what is scheduled; filters may be too strict; trigger a refresh at `/admin/refresh`; read `docker compose logs` |
+| Filters have no effect | Variables are set in `docker-compose.yml`; `docker compose exec espn4cc4c env \| grep FILTER`; the refresh log prints the active filters; environment variables override `filters.ini` |
+| PrismCast playlist missing | `PCAST_SERVER` and `PCAST_PORT` are set; `docker compose exec espn4cc4c ls -l /app/out/playlist.prismcast.m3u` (all three playlists are generated together) |
+| Hostnames do not resolve | Use IP addresses; `dns_search` only adds search suffixes and does not create DNS records |
+| Games cut off at the end | Increase `PADDING_END_MINS` |
 
-### Related Projects
-- **Channels DVR:** https://getchannels.com/
-- **Chrome Capture:** Browser-based video capture for Channels
-- **Channels-4-Chrome:** HTTP bridge for Chrome Capture
-- **PrismCast:** Native app launcher for streaming content
+When reporting a problem, include the output of `docker compose logs --tail=500`, `docker compose config`, your Docker version and platform, and the image tag. Remove personal information first.
 
-### Community & Support
-- **GitHub Repository:** https://github.com/kineticman/ESPN4CC4C
-- **Container Registry:** https://github.com/kineticman/ESPN4CC4C/pkgs/container/espn4cc4c
-- **Issues:** https://github.com/kineticman/ESPN4CC4C/issues
+## Security
 
----
+- The service has **no authentication**. Run it on a trusted LAN or VPN (for example Tailscale) and do not expose it to the internet.
+- ESPN account sign-in is handled by ESPN's own services.
+- Pin image tags, and back up `data/eplus_vc.sqlite3` if you care about its state.
 
-## 🤝 Contributing
+## Documentation
 
-Improvements welcome! When submitting PRs or issues:
+- [DOCKER.md](DOCKER.md): Docker setup details and helper scripts
+- [CHANGELOG.md](CHANGELOG.md): release history
+- [docs/](docs): filtering, log rotation and API references
+- [contrib/cc4c](contrib/cc4c): Chrome Capture userscript
 
-1. **Describe what you expected vs. what happened**
-2. **Include relevant logs** (sanitize personal info)
-3. **List your environment:**
-   - Docker version
-   - OS/platform
-   - ESPN4CC4C version/tag
-   - Relevant environment variables
-4. **Steps to reproduce** (if reporting a bug)
+Related projects: [Channels DVR](https://getchannels.com/), Chrome Capture, Channels4Chrome, PrismCast.
 
----
+## License and credits
 
-## 📝 License & Credits
+No license file is currently included in this repository.
 
-**License:** MIT (see LICENSE file)
-
-**Credits:**
-- ESPN Watch API integration
-- Built with FastAPI, APScheduler, SQLite
-- Container orchestration via Docker Compose
-- Integration designed for Channels DVR ecosystem
-
-**Author:** kineticman
-**Repository:** https://github.com/kineticman/ESPN4CC4C
-
----
-
-*Last updated: 2025-02-14*
+Built with FastAPI, APScheduler and SQLite, using ESPN's Watch API. Author: [kineticman](https://github.com/kineticman).
