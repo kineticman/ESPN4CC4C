@@ -17,7 +17,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY bin/ /app/bin/
-COPY tools/ /app/tools/
 COPY version.py /app/
 COPY static/ /app/static/
 

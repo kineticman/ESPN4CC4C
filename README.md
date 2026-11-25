@@ -1,5 +1,8 @@
 # ESPN4CC4C — ESPN+ Virtual Channels for Channels DVR
 
+> ## ⚠️ This project is no longer actively maintained
+> ESPN4CC4C has not been updated in a long time and is dated. Please use **[FastChannels](https://github.com/kineticman/FastChannels)** instead — it is actively maintained, a self-hosted live-TV aggregator with M3U/XMLTV output and a web admin console. This repository is kept for reference only.
+
 Turn ESPN+ events into **stable virtual channels** (eplus1–eplus40) your **Channels DVR** can ingest via **XMLTV** and **M3U** — all in one Docker service.
 
 > **Current Version:** v5.2.x (2025-02-14+) — PrismCast support, improved admin interface, in-process scheduler (APScheduler), and comprehensive event filtering.
